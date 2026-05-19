@@ -1,0 +1,94 @@
+// =========================================
+// iGEN Talent Acquisition — Backend Server
+// =========================================
+require('dotenv').config();
+
+const express = require('express');
+const cors = require('cors');
+const morgan = require('morgan');
+
+const app = express();
+
+// ---- Environment ----
+const PORT = process.env.PORT || 5000;
+const NODE_ENV = process.env.NODE_ENV || 'production';
+
+// ---- CORS Configuration ----
+const corsOptions = {
+  origin: process.env.CORS_ORIGIN || 'http://localhost:5173',
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization'],
+  credentials: true,
+};
+app.use(cors(corsOptions));
+
+// ---- Body Parsing ----
+app.use(express.json({ limit: '10mb' }));
+app.use(express.urlencoded({ extended: true }));
+
+// ---- Logging ----
+app.use(morgan(NODE_ENV === 'development' ? 'dev' : 'combined'));
+
+// ---- Health Check ----
+app.get('/api/health', (req, res) => {
+  res.json({
+    status: 'ok',
+    environment: NODE_ENV,
+    timestamp: new Date().toISOString(),
+  });
+});
+
+// ---- Route Mounting ----
+const authRoutes = require('./routes/auth');
+const candidateRoutes = require('./routes/candidates');
+const submissionRoutes = require('./routes/submissions');
+const interviewRoutes = require('./routes/interviews');
+const timelineRoutes = require('./routes/timeline');
+const notesRoutes = require('./routes/notes');
+const notificationRoutes = require('./routes/notifications');
+const greyhrRoutes = require('./routes/greyhr');
+const dashboardRoutes = require('./routes/dashboard');
+const userRoutes = require('./routes/users');
+
+app.use('/api/auth', authRoutes);
+app.use('/api/candidates', candidateRoutes);
+app.use('/api/submissions', submissionRoutes);
+app.use('/api/interviews', interviewRoutes);
+app.use('/api/timeline', timelineRoutes);
+app.use('/api/notes', notesRoutes);
+app.use('/api/notifications', notificationRoutes);
+app.use('/api/greyhr', greyhrRoutes);
+app.use('/api/dashboard', dashboardRoutes);
+app.use('/api/users', userRoutes);
+
+// ---- 404 Handler ----
+app.use((req, res) => {
+  res.status(404).json({ error: `Route ${req.method} ${req.originalUrl} not found.` });
+});
+
+// ---- Global Error Handler ----
+app.use((err, req, res, next) => {
+  console.error('💥 Unhandled error:', err);
+  res.status(500).json({
+    error: NODE_ENV === 'development' ? err.message : 'Internal server error.',
+  });
+});
+
+// ---- Start Server ----
+app.listen(PORT, () => {
+  console.log(`
+╔══════════════════════════════════════════════════╗
+║                                                  ║
+║   🚀 iGEN Backend Server                        ║
+║                                                  ║
+║   Port:        ${String(PORT).padEnd(33)}║
+║   Environment: ${NODE_ENV.padEnd(33)}║
+║   CORS Origin: ${(process.env.CORS_ORIGIN || 'http://localhost:5173').padEnd(33)}║
+║                                                  ║
+║   Admin Registration: ${(NODE_ENV === 'development' ? '✅ ENABLED' : '🔒 DISABLED').padEnd(26)}║
+║                                                  ║
+╚══════════════════════════════════════════════════╝
+  `);
+});
+
+module.exports = app;
