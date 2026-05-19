@@ -10,31 +10,45 @@ CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
 
 CREATE TYPE hr_role_enum AS ENUM (
     'admin', 
-    'recruiter'
+    'recruiter',
+    'viewer'
 );
 
 CREATE TYPE employment_status_enum AS ENUM (
     'employed', 
     'unemployed', 
-    'freelance', 
-    'student'
+    'freelance',
+    'freelancer',
+    'student',
+    'notice_period'
 );
 
 CREATE TYPE candidate_status_enum AS ENUM (
+    'new',
     'active', 
+    'submitted',
+    'interview_scheduled',
+    'offered',
     'inactive', 
     'on_hold', 
     'joined', 
     'rejected',
-    'not_reachable'
+    'not_reachable',
+    'follow_up',
+    'archived'
 );
 
 CREATE TYPE submission_status_enum AS ENUM (
     'submitted', 
-    'interviewing', 
+    'shortlisted',
+    'interviewing',
+    'interview_scheduled',
+    'interview_completed',
     'offered', 
+    'offer_accepted',
     'joined', 
     'rejected',
+    'withdrawn',
     'on_hold'
 );
 
@@ -49,7 +63,8 @@ CREATE TYPE interview_result_enum AS ENUM (
     'cleared', 
     'rejected', 
     'on_hold', 
-    'no_show'
+    'no_show',
+    'rescheduled'
 );
 
 CREATE TYPE offer_status_enum AS ENUM (
@@ -88,7 +103,7 @@ CREATE TABLE candidates (
     expected_ctc NUMERIC(10, 2) NOT NULL,
     preferred_location VARCHAR(100) NOT NULL,
     skills TEXT[] NOT NULL,
-    status candidate_status_enum NOT NULL DEFAULT 'active',
+    status candidate_status_enum NOT NULL DEFAULT 'new',
     
     -- If employed
     current_company VARCHAR(100),
@@ -109,6 +124,9 @@ CREATE TABLE candidate_submissions (
     submitted_by UUID REFERENCES hr_users(id),
     submission_date DATE NOT NULL DEFAULT CURRENT_DATE,
     status submission_status_enum NOT NULL DEFAULT 'submitted',
+    offer_ctc NUMERIC(10, 2),
+    joining_date DATE,
+    notes TEXT,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
     
@@ -150,7 +168,8 @@ CREATE TABLE candidate_notes (
     candidate_id UUID REFERENCES candidates(id) ON DELETE CASCADE,
     hr_user_id UUID REFERENCES hr_users(id) ON DELETE SET NULL,
     note_text TEXT NOT NULL,
-    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
 
 -- 8. Follow-up Notification System
@@ -185,6 +204,20 @@ CREATE TABLE greyhr_archive (
     archive_date TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
     profile_data JSONB NOT NULL -- Snapshot of candidate data, submissions, and timeline
 );
+
+-- Refresh Tokens
+CREATE TABLE auth_refresh_tokens (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    user_id UUID REFERENCES hr_users(id) ON DELETE CASCADE,
+    token_hash VARCHAR(255) NOT NULL,
+    expires_at TIMESTAMP WITH TIME ZONE NOT NULL,
+    revoked_at TIMESTAMP WITH TIME ZONE,
+    user_agent TEXT,
+    ip_address VARCHAR(64),
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX idx_refresh_tokens_user_id ON auth_refresh_tokens (user_id);
 
 -- =========================================
 -- INDEXES FOR SEARCH & FILTER (Module 10)
@@ -233,4 +266,8 @@ CREATE TRIGGER update_submissions_modtime
 
 CREATE TRIGGER update_interviews_modtime
     BEFORE UPDATE ON interviews
+    FOR EACH ROW EXECUTE PROCEDURE update_updated_at_column();
+
+CREATE TRIGGER update_candidate_notes_modtime
+    BEFORE UPDATE ON candidate_notes
     FOR EACH ROW EXECUTE PROCEDURE update_updated_at_column();

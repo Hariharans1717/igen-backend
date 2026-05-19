@@ -1,0 +1,48 @@
+const candidateService = require('../services/candidateService');
+
+const listCandidates = async (req, res) => {
+  const query = req.validated.query;
+  const data = await candidateService.listCandidates(query);
+  return res.json(data);
+};
+
+const getCandidate = async (req, res) => {
+  const candidate = await candidateService.getCandidateById(req.params.id);
+  if (!candidate) return res.status(404).json({ error: 'Candidate not found.' });
+  return res.json(candidate);
+};
+
+const createCandidate = async (req, res) => {
+  const candidate = await candidateService.createCandidate(req.validated.body, req.user.id);
+  return res.status(201).json(candidate);
+};
+
+const updateCandidate = async (req, res) => {
+  const candidate = await candidateService.updateCandidate(req.params.id, req.validated.body, req.user.id);
+  if (!candidate) return res.status(404).json({ error: 'Candidate not found.' });
+  return res.json(candidate);
+};
+
+const deleteCandidate = async (req, res) => {
+  const success = await candidateService.softDeleteCandidate(req.params.id, req.user.id);
+  if (!success) return res.status(404).json({ error: 'Candidate not found.' });
+  return res.json({ success: true });
+};
+
+const checkDuplicate = async (req, res) => {
+  const { email, mobile, excludeId } = req.validated.body;
+  if (!email && !mobile) {
+    return res.status(400).json({ error: 'Email or mobile is required.' });
+  }
+  const result = await candidateService.checkDuplicate({ email, mobile, excludeId });
+  return res.json(result);
+};
+
+module.exports = {
+  listCandidates,
+  getCandidate,
+  createCandidate,
+  updateCandidate,
+  deleteCandidate,
+  checkDuplicate,
+};
