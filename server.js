@@ -1,13 +1,21 @@
 // =========================================
 // iGEN Talent Acquisition — Backend Server
 // =========================================
-require('dotenv').config();
+const path = require('path');
+require('dotenv').config({ path: path.resolve(__dirname, '.env') });
 
 const express = require('express');
 const cors = require('cors');
 const morgan = require('morgan');
+const helmet = require('helmet');
+const { apiLimiter } = require('./middleware/rateLimit');
+const errorHandler = require('./middleware/errorHandler');
 
 const app = express();
+
+if (process.env.TRUST_PROXY === 'true') {
+  app.set('trust proxy', 1);
+}
 
 // ---- Environment ----
 const PORT = process.env.PORT || 5000;
@@ -17,10 +25,15 @@ const NODE_ENV = process.env.NODE_ENV || 'production';
 const corsOptions = {
   origin: process.env.CORS_ORIGIN || 'http://localhost:5173',
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'Authorization'],
+  allowedHeaders: ['Content-Type', 'Authorization', 'X-Access-Token'],
   credentials: true,
 };
 app.use(cors(corsOptions));
+
+// ---- Security Headers ----
+app.use(helmet({
+  crossOriginResourcePolicy: false,
+}));
 
 // ---- Body Parsing ----
 app.use(express.json({ limit: '10mb' }));
@@ -28,6 +41,9 @@ app.use(express.urlencoded({ extended: true }));
 
 // ---- Logging ----
 app.use(morgan(NODE_ENV === 'development' ? 'dev' : 'combined'));
+
+// ---- Rate Limiting ----
+app.use('/api', apiLimiter);
 
 // ---- Health Check ----
 app.get('/api/health', (req, res) => {
@@ -67,12 +83,7 @@ app.use((req, res) => {
 });
 
 // ---- Global Error Handler ----
-app.use((err, req, res, next) => {
-  console.error('💥 Unhandled error:', err);
-  res.status(500).json({
-    error: NODE_ENV === 'development' ? err.message : 'Internal server error.',
-  });
-});
+app.use(errorHandler);
 
 // ---- Start Server ----
 app.listen(PORT, () => {
