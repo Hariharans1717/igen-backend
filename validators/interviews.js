@@ -4,10 +4,21 @@ const { paginationSchema, candidateIdParamSchema } = require('./common');
 
 const interviewCreateSchema = z.object({
   body: z.object({
-    submissionId: z.string().uuid(),
-    interviewDate: z.string().trim().min(1),
-    round: z.string().trim().min(1),
-    mode: z.enum(INTERVIEW_MODES),
+    candidate_id: z.union([z.string(), z.number()]).optional(),
+    title: z.string().optional(),
+    interview_date: z.string().optional(),
+    interview_time: z.string().optional(),
+    interview_type: z.string().optional(),
+    interviewer_name: z.string().optional(),
+    candidate_name: z.string().optional(),
+    role: z.string().optional(),
+    department: z.string().optional(),
+    notes: z.string().optional(),
+    
+    submissionId: z.string().uuid().optional(),
+    interviewDate: z.string().trim().optional(),
+    round: z.string().trim().optional(),
+    mode: z.enum(INTERVIEW_MODES).optional(),
     feedback: z.string().trim().optional(),
     result: z.enum(INTERVIEW_RESULTS).optional(),
     offeredCTC: z.coerce.number().nonnegative().optional(),
@@ -20,6 +31,8 @@ const interviewCreateSchema = z.object({
 const interviewUpdateSchema = z.object({
   params: z.object({ id: z.string().uuid() }),
   body: z.object({
+    status: z.string().optional(),
+    
     interviewDate: z.string().trim().optional(),
     round: z.string().trim().optional(),
     mode: z.enum(INTERVIEW_MODES).optional(),

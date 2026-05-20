@@ -3,14 +3,16 @@ const { mapInterviewResultToDb, mapInterviewResultFromDb } = require('../utils/m
 
 const INTERVIEW_SELECT = `
   SELECT iv.*,
-    cs.candidate_id,
-    c.name AS candidate_name,
+    COALESCE(cs.candidate_id, iv.candidate_id_uuid) AS candidate_id,
+    COALESCE(c.name, iv.candidate_name) AS candidate_name,
     cs.client_company AS company_name,
     cs.submission_date AS resume_submission_date,
-    TO_CHAR(iv.interview_date, 'HH24:MI') AS interview_time
+    COALESCE(TO_CHAR(iv.interview_time, 'HH24:MI'), TO_CHAR(iv.interview_date, 'HH24:MI')) AS interview_time,
+    iv.role,
+    iv.department
   FROM interviews iv
   LEFT JOIN candidate_submissions cs ON cs.id = iv.submission_id
-  LEFT JOIN candidates c ON c.id = cs.candidate_id
+  LEFT JOIN candidates c ON c.id = cs.candidate_id OR c.id = iv.candidate_id_uuid
 `;
 
 const toDbMode = (mode) => {
@@ -36,7 +38,12 @@ const mapInterviewRow = (row) => ({
   resumeSubmissionDate: row.resume_submission_date || '',
   interviewDate: row.interview_date,
   interviewTime: row.interview_time || '',
-  round: row.interview_round,
+  round: row.title || row.interview_round,
+  interviewType: row.interview_type,
+  interviewerName: row.interviewer_name,
+  notes: row.recruiter_notes || row.interview_feedback,
+  role: row.role,
+  department: row.department,
   mode: fromDbMode(row.interview_mode),
   feedback: row.interview_feedback || undefined,
   result: mapInterviewResultFromDb(row.result),
@@ -133,8 +140,8 @@ const derivePipelineStatus = ({ result, offerStatus, joiningDate, offeredCTC }) 
   if (offerStatus === 'accepted') return { submissionStatus: 'offer_accepted', candidateStatus: 'offered' };
   if (offerStatus === 'declined') return { submissionStatus: 'rejected', candidateStatus: 'rejected' };
   if (offerStatus === 'pending' || offeredCTC) return { submissionStatus: 'offered', candidateStatus: 'offered' };
-  if (result === 'rejected') return { submissionStatus: 'rejected', candidateStatus: 'rejected' };
-  if (result === 'cleared') return { submissionStatus: 'interview_completed', candidateStatus: 'interview_scheduled' };
+  if (result === 'rejected') return { submissionStatus: 'Interview Failed', candidateStatus: 'rejected' };
+  if (result === 'cleared') return { submissionStatus: 'Interview Passed', candidateStatus: 'interview_scheduled' };
   if (result === 'no_show' || result === 'rescheduled') return { submissionStatus: 'interview_scheduled', candidateStatus: 'interview_scheduled' };
   return { submissionStatus: 'interview_scheduled', candidateStatus: 'interview_scheduled' };
 };
@@ -147,19 +154,30 @@ const createInterview = async (data, userId) => {
     `INSERT INTO interviews (
       submission_id, interview_date, interview_round, interview_mode,
       interview_feedback, result, offered_ctc, offer_status,
-      joining_date, recruiter_notes
-    ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) RETURNING *`,
+      joining_date, recruiter_notes,
+      title, interview_time, interview_type, interviewer_name,
+      candidate_id_uuid, candidate_id_int, candidate_name, role, department
+    ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19) RETURNING *`,
     [
       data.submissionId,
-      data.interviewDate,
-      data.round,
+      data.interviewDate || data.interview_date,
+      data.round || data.title,
       dbMode,
       data.feedback || null,
       dbResult,
       data.offeredCTC || null,
       data.offerStatus || null,
       data.joiningDate || null,
-      data.recruiterNotes || null,
+      data.notes || data.recruiterNotes || null,
+      data.title || data.round,
+      data.interview_time || null,
+      data.interview_type || null,
+      data.interviewer_name || null,
+      typeof data.candidate_id === 'string' && data.candidate_id.length > 10 ? data.candidate_id : null,
+      typeof data.candidate_id === 'number' || (typeof data.candidate_id === 'string' && data.candidate_id.length <= 10) ? parseInt(data.candidate_id) : null,
+      data.candidate_name || null,
+      data.role || null,
+      data.department || null,
     ]
   );
 

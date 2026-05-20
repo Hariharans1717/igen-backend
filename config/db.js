@@ -18,7 +18,7 @@ const pool = new Pool({
   ssl: sslConfig,
   max: 20,
   idleTimeoutMillis: 30000,
-  connectionTimeoutMillis: 2000,
+  connectionTimeoutMillis: 30000,
   ssl: {
     rejectUnauthorized: false
   }
@@ -26,8 +26,8 @@ const pool = new Pool({
 
 // Log pool connection errors
 pool.on('error', (err) => {
-  console.error('❌ Unexpected error on idle PostgreSQL client:', err);
-  process.exit(-1);
+  console.error('❌ Unexpected error on idle PostgreSQL client:', err.message);
+  // Do not process.exit(-1) here to avoid crashing the server on Render DB connection drops
 });
 
 module.exports = pool;
