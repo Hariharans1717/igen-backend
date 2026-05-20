@@ -70,7 +70,7 @@ const listInterviews = async ({ page, pageSize, search }) => {
   const countResult = await pool.query(
     `SELECT COUNT(*) FROM interviews iv
      LEFT JOIN candidate_submissions cs ON cs.id = iv.submission_id
-     LEFT JOIN candidates c ON c.id = cs.candidate_id
+     LEFT JOIN candidates c ON c.id = cs.candidate_id OR c.id = iv.candidate_id_uuid
      ${whereClause}`,
     params
   );
@@ -94,7 +94,7 @@ const listInterviews = async ({ page, pageSize, search }) => {
 
 const getInterviewsByCandidate = async (candidateId) => {
   const result = await pool.query(
-    `${INTERVIEW_SELECT} WHERE cs.candidate_id = $1 ORDER BY iv.interview_date DESC`,
+    `${INTERVIEW_SELECT} WHERE cs.candidate_id = $1 OR iv.candidate_id_uuid = $1 ORDER BY iv.interview_date DESC`,
     [candidateId]
   );
   return result.rows.map(mapInterviewRow);

@@ -36,6 +36,10 @@ const SUBMISSION_STATUSES = [
   'rejected',
   'withdrawn',
   'on_hold',
+  'Interview Passed',
+  'Interview Failed',
+  'Interview On Hold',
+  'Next Round Scheduled',
 ];
 
 const INTERVIEW_RESULTS = [

@@ -206,36 +206,60 @@ const createCandidate = async (data, userId) => {
   const employmentStatus = normalizeEmploymentStatus(data.employmentStatus);
   const status = mapCandidateStatusToDb(data.status || 'new');
 
-  const result = await pool.query(
-    `INSERT INTO candidates (
-      name, email, mobile, employment_status, expected_ctc, preferred_location,
-      skills, current_company, current_designation, current_ctc, experience_years,
-      status, created_by
-    ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13) RETURNING *`,
-    [
-      data.name,
-      data.email,
-      data.mobile,
-      employmentStatus,
-      data.expectedCTC,
-      data.preferredLocation,
-      data.skills,
-      data.currentCompany || null,
-      data.currentDesignation || null,
-      data.currentCTC || null,
-      data.experience || null,
-      status,
-      userId,
-    ]
+  // Check if an inactive candidate already exists with the same email or mobile
+  const existing = await pool.query(
+    "SELECT id, status FROM candidates WHERE email = $1 OR mobile = $2",
+    [data.email, data.mobile]
   );
 
-  const candidate = result.rows[0];
+  let candidate;
 
-  await pool.query(
-    `INSERT INTO candidate_timeline (candidate_id, hr_user_id, action, note)
-     VALUES ($1, $2, $3, $4)`,
-    [candidate.id, userId, 'Candidate Created', `Profile created for ${candidate.name}`]
-  );
+  if (existing.rows.length > 0) {
+    const existingCandidate = existing.rows[0];
+    if (existingCandidate.status !== 'inactive') {
+      throw new Error('A candidate with this email or mobile already exists and is active.');
+    }
+    // Restore and update the inactive candidate
+    const result = await pool.query(
+      `UPDATE candidates SET 
+        name=$1, email=$2, mobile=$3, employment_status=$4, expected_ctc=$5, preferred_location=$6,
+        skills=$7, current_company=$8, current_designation=$9, current_ctc=$10, experience_years=$11,
+        status=$12, created_by=$13, updated_at=NOW()
+       WHERE id=$14 RETURNING *`,
+      [
+        data.name, data.email, data.mobile, employmentStatus, data.expectedCTC, data.preferredLocation,
+        data.skills, data.currentCompany || null, data.currentDesignation || null, data.currentCTC || null, data.experience || null,
+        status, userId, existingCandidate.id
+      ]
+    );
+    candidate = result.rows[0];
+
+    await pool.query(
+      `INSERT INTO candidate_timeline (candidate_id, hr_user_id, action, note)
+       VALUES ($1, $2, $3, $4)`,
+      [candidate.id, userId, 'Candidate Restored', `Profile restored and updated for ${candidate.name}`]
+    );
+  } else {
+    const result = await pool.query(
+      `INSERT INTO candidates (
+        name, email, mobile, employment_status, expected_ctc, preferred_location,
+        skills, current_company, current_designation, current_ctc, experience_years,
+        status, created_by
+      ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13) RETURNING *`,
+      [
+        data.name, data.email, data.mobile, employmentStatus, data.expectedCTC, data.preferredLocation,
+        data.skills, data.currentCompany || null, data.currentDesignation || null, data.currentCTC || null, data.experience || null,
+        status, userId,
+      ]
+    );
+    candidate = result.rows[0];
+
+    await pool.query(
+      `INSERT INTO candidate_timeline (candidate_id, hr_user_id, action, note)
+       VALUES ($1, $2, $3, $4)`,
+      [candidate.id, userId, 'Candidate Created', `Profile created for ${candidate.name}`]
+    );
+  }
 
   return mapCandidateRow(candidate);
 };
