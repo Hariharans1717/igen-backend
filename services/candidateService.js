@@ -203,22 +203,38 @@ const getCandidateById = async (id) => {
 };
 
 const createCandidate = async (data, userId) => {
+  console.log('🔧 [candidateService.createCandidate] Processing candidate creation');
+  console.log('📝 Input data:', JSON.stringify(data, null, 2));
+  console.log('👤 Created by user:', userId);
+
   const employmentStatus = normalizeEmploymentStatus(data.employmentStatus);
   const status = mapCandidateStatusToDb(data.status || 'new');
+  
+  console.log('🗂️ Normalized employmentStatus:', employmentStatus);
+  console.log('🗂️ Mapped status:', status);
 
   // Check if an inactive candidate already exists with the same email or mobile
   const existing = await pool.query(
     "SELECT id, status FROM candidates WHERE email = $1 OR mobile = $2",
     [data.email, data.mobile]
   );
+  
+  console.log('🔍 Existing candidate check - Found:', existing.rows.length > 0);
+  if (existing.rows.length > 0) {
+    console.log('📋 Existing candidate:', JSON.stringify(existing.rows[0], null, 2));
+  }
 
   let candidate;
 
   if (existing.rows.length > 0) {
     const existingCandidate = existing.rows[0];
     if (existingCandidate.status !== 'inactive') {
+      console.error('❌ Duplicate detected - active candidate with same email/mobile');
       throw new Error('A candidate with this email or mobile already exists and is active.');
     }
+    
+    console.log('♻️ Restoring inactive candidate:', existingCandidate.id);
+    
     // Restore and update the inactive candidate
     const result = await pool.query(
       `UPDATE candidates SET 
@@ -232,7 +248,10 @@ const createCandidate = async (data, userId) => {
         status, userId, existingCandidate.id
       ]
     );
+    
     candidate = result.rows[0];
+    console.log('✅ Candidate restored:', candidate.id);
+    console.log('📊 Restored candidate data:', JSON.stringify(candidate, null, 2));
 
     await pool.query(
       `INSERT INTO candidate_timeline (candidate_id, hr_user_id, action, note)
@@ -240,6 +259,8 @@ const createCandidate = async (data, userId) => {
       [candidate.id, userId, 'Candidate Restored', `Profile restored and updated for ${candidate.name}`]
     );
   } else {
+    console.log('➕ Creating new candidate');
+    
     const result = await pool.query(
       `INSERT INTO candidates (
         name, email, mobile, employment_status, expected_ctc, preferred_location,
@@ -252,7 +273,10 @@ const createCandidate = async (data, userId) => {
         status, userId,
       ]
     );
+    
     candidate = result.rows[0];
+    console.log('✅ Candidate created:', candidate.id);
+    console.log('📊 Created candidate data:', JSON.stringify(candidate, null, 2));
 
     await pool.query(
       `INSERT INTO candidate_timeline (candidate_id, hr_user_id, action, note)
@@ -261,7 +285,10 @@ const createCandidate = async (data, userId) => {
     );
   }
 
-  return mapCandidateRow(candidate);
+  const mappedCandidate = mapCandidateRow(candidate);
+  console.log('🎨 Mapped candidate response:', JSON.stringify(mappedCandidate, null, 2));
+  
+  return mappedCandidate;
 };
 
 const updateCandidate = async (id, data, userId) => {

@@ -77,8 +77,17 @@ app.use('/api/greyhr', greyhrRoutes);
 app.use('/api/dashboard', dashboardRoutes);
 app.use('/api/users', userRoutes);
 
+console.log('📋 Routes Registered:');
+console.log('   ✅ POST   /api/candidates');
+console.log('   ✅ GET    /api/candidates');
+console.log('   ✅ GET    /api/candidates/:id');
+console.log('   ✅ PUT    /api/candidates/:id');
+console.log('   ✅ DELETE /api/candidates/:id');
+console.log('   ✅ POST   /api/candidates/check-duplicate');
+
 // ---- 404 Handler ----
 app.use((req, res) => {
+  console.warn(`⚠️ 404 Not Found: ${req.method} ${req.originalUrl}`);
   res.status(404).json({ error: `Route ${req.method} ${req.originalUrl} not found.` });
 });
 

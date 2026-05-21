@@ -24,6 +24,25 @@ const pool = new Pool({
   }
 });
 
+// Log pool connection details
+console.log('🗄️ PostgreSQL Connection Config:');
+console.log('   Host:', process.env.DB_HOST);
+console.log('   Port:', process.env.DB_PORT);
+console.log('   Database:', process.env.DB_NAME);
+console.log('   User:', process.env.DB_USER);
+console.log('   Max connections:', 20);
+console.log('   Connection timeout:', '30s');
+
+// Test connection
+pool.query('SELECT NOW();', (err, result) => {
+  if (err) {
+    console.error('❌ PostgreSQL connection test failed:', err.message);
+  } else {
+    console.log('✅ PostgreSQL connection successful');
+    console.log('   Server time:', result.rows[0].now);
+  }
+});
+
 // Log pool connection errors
 pool.on('error', (err) => {
   console.error('❌ Unexpected error on idle PostgreSQL client:', err.message);

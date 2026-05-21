@@ -13,8 +13,22 @@ const getCandidate = async (req, res) => {
 };
 
 const createCandidate = async (req, res) => {
-  const candidate = await candidateService.createCandidate(req.validated.body, req.user.id);
-  return res.status(201).json(candidate);
+  try {
+    console.log('📨 [createCandidate] Received request');
+    console.log('👤 User ID:', req.user.id);
+    console.log('📦 Validated Body:', JSON.stringify(req.validated.body, null, 2));
+    
+    const candidate = await candidateService.createCandidate(req.validated.body, req.user.id);
+    
+    console.log('✅ [createCandidate] Candidate created successfully');
+    console.log('📤 Response:', JSON.stringify(candidate, null, 2));
+    
+    return res.status(201).json(candidate);
+  } catch (error) {
+    console.error('❌ [createCandidate] Error:', error.message);
+    console.error('🔍 Stack:', error.stack);
+    throw error;
+  }
 };
 
 const updateCandidate = async (req, res) => {

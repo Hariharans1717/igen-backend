@@ -18,11 +18,14 @@ const router = express.Router();
 
 router.use(authenticate);
 
+// Check duplicate route must come BEFORE /:id route to avoid route matching issues
+router.post('/check-duplicate', validate(candidateDuplicateSchema), asyncHandler(candidatesController.checkDuplicate));
+
+// CRUD routes
 router.get('/', validate(candidateListSchema), asyncHandler(candidatesController.listCandidates));
-router.get('/:id', asyncHandler(candidatesController.getCandidate));
 router.post('/', authorize('admin', 'recruiter'), validate(candidateCreateSchema), asyncHandler(candidatesController.createCandidate));
+router.get('/:id', asyncHandler(candidatesController.getCandidate));
 router.put('/:id', authorize('admin', 'recruiter'), validate(candidateUpdateSchema), asyncHandler(candidatesController.updateCandidate));
 router.delete('/:id', authorize('admin', 'recruiter'), asyncHandler(candidatesController.deleteCandidate));
-router.post('/check-duplicate', validate(candidateDuplicateSchema), asyncHandler(candidatesController.checkDuplicate));
 
 module.exports = router;
