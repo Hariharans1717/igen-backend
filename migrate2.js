@@ -15,6 +15,9 @@ async function run() {
       ALTER TABLE interviews 
       ADD COLUMN IF NOT EXISTS candidate_id_int INT,
       ADD COLUMN IF NOT EXISTS candidate_id_uuid UUID,
+      ADD COLUMN IF NOT EXISTS candidate_name VARCHAR(255),
+      ADD COLUMN IF NOT EXISTS role VARCHAR(100),
+      ADD COLUMN IF NOT EXISTS department VARCHAR(100),
       ALTER COLUMN submission_id DROP NOT NULL,
       ALTER COLUMN interview_date DROP NOT NULL,
       ALTER COLUMN interview_round DROP NOT NULL,

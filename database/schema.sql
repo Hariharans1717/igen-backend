@@ -147,6 +147,15 @@ CREATE TABLE interviews (
     offer_status offer_status_enum,
     joining_date DATE,
     recruiter_notes TEXT,
+    interviewer_name VARCHAR(255),
+    interview_time TIME,
+    interview_type VARCHAR(100),
+    title VARCHAR(255),
+    candidate_id_uuid UUID,
+    candidate_id_int INT,
+    candidate_name VARCHAR(255),
+    role VARCHAR(100),
+    department VARCHAR(100),
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
