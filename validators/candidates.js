@@ -17,6 +17,9 @@ const candidateCreateSchema = z.object({
     currentCTC: z.coerce.number().nonnegative().optional(),
     experience: z.coerce.number().nonnegative().optional(),
     createdBy: z.string().uuid().optional(),
+    photoUrl: z.string().trim().optional(),
+    resumeUrl: z.string().trim().optional(),
+    resumeFilename: z.string().trim().optional(),
   }),
 });
 
@@ -35,6 +38,9 @@ const candidateUpdateSchema = z.object({
     currentDesignation: z.string().trim().optional().nullable(),
     currentCTC: z.coerce.number().nonnegative().optional().nullable(),
     experience: z.coerce.number().nonnegative().optional().nullable(),
+    photoUrl: z.string().trim().optional().nullable(),
+    resumeUrl: z.string().trim().optional().nullable(),
+    resumeFilename: z.string().trim().optional().nullable(),
   }),
 });
 

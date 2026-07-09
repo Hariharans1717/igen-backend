@@ -1,4 +1,5 @@
 const pool = require('../config/db');
+const googleDriveService = require('./googleDriveService');
 const {
   mapEmploymentStatusFromDb,
   normalizeEmploymentStatus,
@@ -25,6 +26,9 @@ const mapCandidateRow = (row) => ({
   createdBy: row.created_by,
   createdAt: row.created_at,
   updatedAt: row.updated_at,
+  photoUrl: row.photo_url || undefined,
+  resumeUrl: row.resume_url || undefined,
+  resumeFilename: row.resume_filename || undefined,
 });
 
 const buildUpdate = (data) => {
@@ -41,6 +45,9 @@ const buildUpdate = (data) => {
     currentDesignation: 'current_designation',
     currentCTC: 'current_ctc',
     experience: 'experience_years',
+    photoUrl: 'photo_url',
+    resumeUrl: 'resume_url',
+    resumeFilename: 'resume_filename',
   };
 
   const keys = Object.keys(fieldMap).filter((key) => Object.prototype.hasOwnProperty.call(data, key));
@@ -207,6 +214,19 @@ const createCandidate = async (data, userId) => {
   console.log('📝 Input data:', JSON.stringify(data, null, 2));
   console.log('👤 Created by user:', userId);
 
+  // Upload files to Google Drive first if they are in base64 format
+  const uploadResult = await googleDriveService.uploadCandidateFiles(
+    data.name,
+    data.mobile,
+    data.photoUrl,
+    data.resumeUrl,
+    data.resumeFilename
+  );
+
+  const finalPhotoUrl = uploadResult.photoUrl;
+  const finalResumeUrl = uploadResult.resumeUrl;
+  const finalResumeFilename = uploadResult.resumeFilename;
+
   const employmentStatus = normalizeEmploymentStatus(data.employmentStatus);
   const status = mapCandidateStatusToDb(data.status || 'new');
   
@@ -240,12 +260,13 @@ const createCandidate = async (data, userId) => {
       `UPDATE candidates SET 
         name=$1, email=$2, mobile=$3, employment_status=$4, expected_ctc=$5, preferred_location=$6,
         skills=$7, current_company=$8, current_designation=$9, current_ctc=$10, experience_years=$11,
-        status=$12, created_by=$13, updated_at=NOW()
-       WHERE id=$14 RETURNING *`,
+        status=$12, created_by=$13, updated_at=NOW(),
+        photo_url=$14, resume_url=$15, resume_filename=$16
+       WHERE id=$17 RETURNING *`,
       [
         data.name, data.email, data.mobile, employmentStatus, data.expectedCTC, data.preferredLocation,
         data.skills, data.currentCompany || null, data.currentDesignation || null, data.currentCTC || null, data.experience || null,
-        status, userId, existingCandidate.id
+        status, userId, finalPhotoUrl || null, finalResumeUrl || null, finalResumeFilename || null, existingCandidate.id
       ]
     );
     
@@ -265,12 +286,12 @@ const createCandidate = async (data, userId) => {
       `INSERT INTO candidates (
         name, email, mobile, employment_status, expected_ctc, preferred_location,
         skills, current_company, current_designation, current_ctc, experience_years,
-        status, created_by
-      ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13) RETURNING *`,
+        status, created_by, photo_url, resume_url, resume_filename
+      ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16) RETURNING *`,
       [
         data.name, data.email, data.mobile, employmentStatus, data.expectedCTC, data.preferredLocation,
         data.skills, data.currentCompany || null, data.currentDesignation || null, data.currentCTC || null, data.experience || null,
-        status, userId,
+        status, userId, finalPhotoUrl || null, finalResumeUrl || null, finalResumeFilename || null
       ]
     );
     
@@ -304,6 +325,29 @@ const updateCandidate = async (id, data, userId) => {
   }
   if (Object.prototype.hasOwnProperty.call(data, 'status')) {
     updatePayload.status = mapCandidateStatusToDb(data.status);
+  }
+
+  // Handle new file uploads to Google Drive if updated files are base64 strings
+  const candidateName = data.name || existing.rows[0].name;
+  const candidateMobile = data.mobile || existing.rows[0].mobile;
+
+  if ((data.photoUrl && data.photoUrl.startsWith('data:')) || (data.resumeUrl && data.resumeUrl.startsWith('data:'))) {
+    console.log(`🔧 [candidateService.updateCandidate] Uploading updated base64 files for ${candidateName} to Google Drive`);
+    const uploadResult = await googleDriveService.uploadCandidateFiles(
+      candidateName,
+      candidateMobile,
+      data.photoUrl || existing.rows[0].photo_url,
+      data.resumeUrl || existing.rows[0].resume_url,
+      data.resumeFilename || existing.rows[0].resume_filename
+    );
+
+    if (data.photoUrl && data.photoUrl.startsWith('data:')) {
+      updatePayload.photoUrl = uploadResult.photoUrl;
+    }
+    if (data.resumeUrl && data.resumeUrl.startsWith('data:')) {
+      updatePayload.resumeUrl = uploadResult.resumeUrl;
+      updatePayload.resumeFilename = uploadResult.resumeFilename;
+    }
   }
 
   const { assignments, values } = buildUpdate(updatePayload);
