@@ -235,7 +235,8 @@ const uploadCandidateFiles = async (name, mobile, photoDataUrl, resumeDataUrl, r
         const fileData = await uploadFileToFolder(fileName, parsed.mimeType, parsed.buffer, folderId);
         
         if (fileData && fileData.id) {
-          photoUrl = `https://lh3.googleusercontent.com/d/${fileData.id}`;
+          // Direct displayable link for <img> tag inside frontend
+          photoUrl = `https://drive.google.com/thumbnail?id=${fileData.id}&sz=w500`;
           console.log(`✅ Photo uploaded successfully. Link: ${photoUrl}`);
         }
       }
