@@ -11,14 +11,15 @@ const createNote = async (req, res) => {
 };
 
 const updateNote = async (req, res) => {
-  const result = await notesService.updateNote(req.params.id, req.validated.body.content);
+  const { content, title } = req.validated.body;
+  const result = await notesService.updateNote(req.params.id, content, title, req.user.id);
   if (result?.error === 'not_found') return res.status(404).json({ error: 'Note not found.' });
   if (result?.error === 'expired') return res.status(403).json({ error: 'Notes can only be edited within 1 hour of creation.' });
   return res.json(result.note);
 };
 
 const deleteNote = async (req, res) => {
-  const success = await notesService.deleteNote(req.params.id);
+  const success = await notesService.deleteNote(req.params.id, req.user.id);
   if (!success) return res.status(404).json({ error: 'Note not found.' });
   return res.json({ success: true });
 };

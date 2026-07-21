@@ -25,6 +25,7 @@ router.post('/check-duplicate', validate(candidateDuplicateSchema), asyncHandler
 router.get('/', validate(candidateListSchema), asyncHandler(candidatesController.listCandidates));
 router.post('/', authorize('admin', 'recruiter'), validate(candidateCreateSchema), asyncHandler(candidatesController.createCandidate));
 router.get('/:id', asyncHandler(candidatesController.getCandidate));
+router.get('/:id/history', asyncHandler(candidatesController.getCandidateHistory));
 router.put('/:id', authorize('admin', 'recruiter'), validate(candidateUpdateSchema), asyncHandler(candidatesController.updateCandidate));
 router.delete('/:id', authorize('admin', 'recruiter'), asyncHandler(candidatesController.deleteCandidate));
 

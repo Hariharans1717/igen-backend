@@ -3,6 +3,7 @@ const pool = require('../config/db');
 const mapNoteRow = (row) => ({
   id: row.id,
   candidateId: row.candidate_id,
+  title: row.title || 'Note',
   content: row.note_text,
   createdBy: row.hr_user_id,
   createdByName: row.created_by_name || '',
@@ -23,11 +24,12 @@ const getNotesByCandidate = async (candidateId) => {
   return result.rows.map(mapNoteRow);
 };
 
-const createNote = async ({ candidateId, content }, userId) => {
+const createNote = async ({ candidateId, content, title }, userId) => {
+  const noteTitle = title || 'Note';
   const result = await pool.query(
-    `INSERT INTO candidate_notes (candidate_id, hr_user_id, note_text)
-     VALUES ($1, $2, $3) RETURNING *`,
-    [candidateId, userId, content]
+    `INSERT INTO candidate_notes (candidate_id, hr_user_id, title, note_text)
+     VALUES ($1, $2, $3, $4) RETURNING *`,
+    [candidateId, userId, noteTitle, content]
   );
 
   const enriched = await pool.query(
@@ -38,10 +40,37 @@ const createNote = async ({ candidateId, content }, userId) => {
     [result.rows[0].id]
   );
 
-  return mapNoteRow(enriched.rows[0]);
+  const noteData = mapNoteRow(enriched.rows[0]);
+
+  // Insert entry into candidate_history (Audit Trail)
+  await pool.query(
+    `INSERT INTO candidate_history (candidate_id, changed_by, change_type, old_data, new_data, created_at)
+     VALUES ($1, $2, $3, NULL, $4, CURRENT_TIMESTAMP)`,
+    [
+      candidateId,
+      userId,
+      'note_added',
+      JSON.stringify({
+        id: noteData.id,
+        title: noteTitle,
+        content: content,
+        date: noteData.createdAt,
+        createdByName: noteData.createdByName,
+      }),
+    ]
+  );
+
+  // Insert entry into candidate_timeline
+  await pool.query(
+    `INSERT INTO candidate_timeline (candidate_id, hr_user_id, action, note)
+     VALUES ($1, $2, $3, $4)`,
+    [candidateId, userId, `Main Note Added: ${noteTitle}`, content]
+  );
+
+  return noteData;
 };
 
-const updateNote = async (id, content) => {
+const updateNote = async (id, content, title, userId) => {
   const noteResult = await pool.query('SELECT * FROM candidate_notes WHERE id = $1', [id]);
   if (noteResult.rows.length === 0) return { error: 'not_found' };
 
@@ -49,9 +78,10 @@ const updateNote = async (id, content) => {
   const hourAgo = new Date(Date.now() - 3600000);
   if (new Date(note.created_at) < hourAgo) return { error: 'expired' };
 
+  const noteTitle = title || note.title || 'Note';
   await pool.query(
-    'UPDATE candidate_notes SET note_text = $1, updated_at = CURRENT_TIMESTAMP WHERE id = $2',
-    [content, id]
+    'UPDATE candidate_notes SET title = $1, note_text = $2, updated_at = CURRENT_TIMESTAMP WHERE id = $3',
+    [noteTitle, content, id]
   );
 
   const enriched = await pool.query(
@@ -62,12 +92,44 @@ const updateNote = async (id, content) => {
     [id]
   );
 
-  return { note: mapNoteRow(enriched.rows[0]) };
+  const updatedNote = mapNoteRow(enriched.rows[0]);
+
+  // Insert entry into candidate_history
+  await pool.query(
+    `INSERT INTO candidate_history (candidate_id, changed_by, change_type, old_data, new_data, created_at)
+     VALUES ($1, $2, $3, $4, $5, CURRENT_TIMESTAMP)`,
+    [
+      note.candidate_id,
+      userId,
+      'note_updated',
+      JSON.stringify({ title: note.title, content: note.note_text }),
+      JSON.stringify({ title: updatedNote.title, content: updatedNote.content, date: updatedNote.updatedAt }),
+    ]
+  );
+
+  return { note: updatedNote };
 };
 
-const deleteNote = async (id) => {
-  const result = await pool.query('DELETE FROM candidate_notes WHERE id = $1 RETURNING id', [id]);
-  return result.rows.length > 0;
+const deleteNote = async (id, userId) => {
+  const noteResult = await pool.query('SELECT * FROM candidate_notes WHERE id = $1', [id]);
+  if (noteResult.rows.length === 0) return false;
+  const note = noteResult.rows[0];
+
+  await pool.query('DELETE FROM candidate_notes WHERE id = $1', [id]);
+
+  // Insert entry into candidate_history
+  await pool.query(
+    `INSERT INTO candidate_history (candidate_id, changed_by, change_type, old_data, new_data, created_at)
+     VALUES ($1, $2, $3, $4, NULL, CURRENT_TIMESTAMP)`,
+    [
+      note.candidate_id,
+      userId,
+      'note_deleted',
+      JSON.stringify({ title: note.title, content: note.note_text, createdAt: note.created_at }),
+    ]
+  );
+
+  return true;
 };
 
 module.exports = {

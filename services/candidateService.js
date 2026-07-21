@@ -439,6 +439,28 @@ const checkDuplicate = async ({ email, mobile, excludeId }) => {
   return { emailExists, mobileExists, candidate };
 };
 
+const getCandidateHistory = async (candidateId) => {
+  const result = await pool.query(
+    `SELECT ch.*, CONCAT(u.first_name, ' ', u.last_name) AS changed_by_name
+     FROM candidate_history ch
+     LEFT JOIN hr_users u ON u.id = ch.changed_by
+     WHERE ch.candidate_id = $1
+     ORDER BY ch.created_at DESC`,
+    [candidateId]
+  );
+
+  return result.rows.map(row => ({
+    id: row.id,
+    candidateId: row.candidate_id,
+    changedBy: row.changed_by,
+    changedByName: row.changed_by_name || 'System',
+    changeType: row.change_type,
+    oldData: row.old_data,
+    newData: row.new_data,
+    createdAt: row.created_at,
+  }));
+};
+
 module.exports = {
   listCandidates,
   getCandidateById,
@@ -447,4 +469,5 @@ module.exports = {
   setCandidateStatus,
   softDeleteCandidate,
   checkDuplicate,
+  getCandidateHistory,
 };

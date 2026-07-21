@@ -112,6 +112,9 @@ CREATE TABLE candidates (
     experience_years NUMERIC(4, 1),
     
     created_by UUID REFERENCES hr_users(id),
+    photo_url TEXT,
+    resume_url TEXT,
+    resume_filename VARCHAR(255),
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
@@ -176,6 +179,7 @@ CREATE TABLE candidate_notes (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     candidate_id UUID REFERENCES candidates(id) ON DELETE CASCADE,
     hr_user_id UUID REFERENCES hr_users(id) ON DELETE SET NULL,
+    title VARCHAR(255) DEFAULT 'Note',
     note_text TEXT NOT NULL,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP

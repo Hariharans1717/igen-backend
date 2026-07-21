@@ -52,6 +52,11 @@ const checkDuplicate = async (req, res) => {
   return res.json(result);
 };
 
+const getCandidateHistory = async (req, res) => {
+  const history = await candidateService.getCandidateHistory(req.params.id);
+  return res.json(history);
+};
+
 module.exports = {
   listCandidates,
   getCandidate,
@@ -59,4 +64,5 @@ module.exports = {
   updateCandidate,
   deleteCandidate,
   checkDuplicate,
+  getCandidateHistory,
 };

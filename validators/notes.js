@@ -4,6 +4,7 @@ const { candidateIdParamSchema } = require('./common');
 const noteCreateSchema = z.object({
   body: z.object({
     candidateId: z.string().uuid(),
+    title: z.string().trim().optional(),
     content: z.string().trim().min(1),
   }),
 });
@@ -11,6 +12,7 @@ const noteCreateSchema = z.object({
 const noteUpdateSchema = z.object({
   params: z.object({ id: z.string().uuid() }),
   body: z.object({
+    title: z.string().trim().optional(),
     content: z.string().trim().min(1),
   }),
 });

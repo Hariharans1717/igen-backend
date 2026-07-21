@@ -18,7 +18,7 @@ if (process.env.TRUST_PROXY === 'true') {
 }
 
 // ---- Environment ----
-const PORT = process.env.PORT || 5000;
+const BASE_PORT = Number(process.env.PORT) || 5000;
 const NODE_ENV = process.env.NODE_ENV || 'production';
 
 // ---- CORS Configuration ----
@@ -95,13 +95,13 @@ app.use((req, res) => {
 app.use(errorHandler);
 
 // ---- Start Server ----
-app.listen(PORT, () => {
+const printStartupBanner = (port) => {
   console.log(`
 ╔══════════════════════════════════════════════════╗
 ║                                                  ║
 ║   🚀 iGEN Backend Server                        ║
 ║                                                  ║
-║   Port:        ${String(PORT).padEnd(33)}║
+║   Port:        ${String(port).padEnd(33)}║
 ║   Environment: ${NODE_ENV.padEnd(33)}║
 ║   CORS Origin: ${(process.env.CORS_ORIGIN || 'http://localhost:5173').padEnd(33)}║
 ║                                                  ║
@@ -109,6 +109,30 @@ app.listen(PORT, () => {
 ║                                                  ║
 ╚══════════════════════════════════════════════════╝
   `);
-});
+};
+
+const startServer = (port, retriesLeft = 5) => {
+  const server = app.listen(port, () => {
+    printStartupBanner(port);
+  });
+
+  server.on('error', (err) => {
+    if (err.code === 'EADDRINUSE' && retriesLeft > 0) {
+      const nextPort = port + 1;
+      console.warn(`⚠️ Port ${port} is in use. Retrying on port ${nextPort}...`);
+      return startServer(nextPort, retriesLeft - 1);
+    }
+
+    if (err.code === 'EADDRINUSE') {
+      console.error(`❌ Could not start server: ports ${BASE_PORT}-${BASE_PORT + 5} are in use.`);
+      process.exit(1);
+    }
+
+    console.error('❌ Server startup failed:', err.message);
+    process.exit(1);
+  });
+};
+
+startServer(BASE_PORT);
 
 module.exports = app;
