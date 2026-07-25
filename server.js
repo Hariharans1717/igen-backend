@@ -63,7 +63,16 @@ app.use(morgan(NODE_ENV === 'development' ? 'dev' : 'combined'));
 // ---- Rate Limiting ----
 app.use('/api', apiLimiter);
 
-// ---- Health Check ----
+// ---- Root & Health Check ----
+app.get('/', (req, res) => {
+  res.json({
+    message: '🚀 iGEN Talent Acquisition Backend API is running!',
+    status: 'ok',
+    health: '/api/health',
+    timestamp: new Date().toISOString(),
+  });
+});
+
 app.get('/api/health', (req, res) => {
   res.json({
     status: 'ok',
