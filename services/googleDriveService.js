@@ -192,11 +192,115 @@ const uploadFileToFolder = async (fileName, mimeType, buffer, folderId) => {
 };
 
 /**
- * Main service method to process file uploads for a candidate
+ * Delete existing files in a folder matching a category ('photo' or 'resume')
+ */
+const deleteExistingFilesInFolder = async (folderId, type) => {
+  const drive = await getDriveClient();
+  if (!drive || !folderId) return;
+
+  try {
+    const response = await drive.files.list({
+      q: `'${folderId}' in parents and trashed = false`,
+      fields: 'files(id, name, mimeType)',
+      supportsAllDrives: true,
+      includeItemsFromAllDrives: true
+    });
+
+    if (response.data.files && response.data.files.length > 0) {
+      for (const file of response.data.files) {
+        const isPhoto = file.name.toLowerCase().startsWith('photo') || (file.mimeType && file.mimeType.startsWith('image/'));
+        const isResume = !isPhoto || file.name.toLowerCase().startsWith('resume');
+
+        if ((type === 'photo' && isPhoto) || (type === 'resume' && isResume)) {
+          console.log(`🗑️ Deleting old Google Drive file: ${file.name} (${file.id})`);
+          await drive.files.delete({
+            fileId: file.id,
+            supportsAllDrives: true
+          });
+        }
+      }
+    }
+  } catch (err) {
+    console.error(`⚠️ Failed to delete existing ${type} files from Google Drive folder:`, err.message);
+  }
+};
+
+/**
+ * Extract Google Drive File ID from a URL or raw ID string
+ */
+const extractDriveFileId = (urlOrId) => {
+  if (!urlOrId) return null;
+  if (!urlOrId.includes('/') && !urlOrId.includes('=')) return urlOrId;
+  const matchThumb = urlOrId.match(/id=([a-zA-Z0-9_-]+)/);
+  if (matchThumb) return matchThumb[1];
+  const matchPath = urlOrId.match(/\/d\/([a-zA-Z0-9_-]+)/);
+  if (matchPath) return matchPath[1];
+  return null;
+};
+
+/**
+ * Delete a specific file from Google Drive by URL or File ID
+ */
+const deleteFileFromDrive = async (fileIdOrUrl) => {
+  const drive = await getDriveClient();
+  if (!drive) return false;
+
+  const fileId = extractDriveFileId(fileIdOrUrl);
+  if (!fileId) return false;
+
+  try {
+    console.log(`🗑️ Deleting Google Drive file: ${fileId}`);
+    await drive.files.delete({
+      fileId: fileId,
+      supportsAllDrives: true
+    });
+    return true;
+  } catch (err) {
+    console.error(`⚠️ Failed to delete file ${fileId} from Google Drive:`, err.message);
+    return false;
+  }
+};
+
+/**
+ * Get or create the "igen users" root folder in Google Drive.
+ * All candidate folders are nested inside this root folder.
+ */
+const ROOT_FOLDER_NAME = 'igen users';
+let cachedRootFolderId = null;
+
+const getOrCreateRootFolder = async () => {
+  if (cachedRootFolderId) return cachedRootFolderId;
+
+  // Search for the root folder at Drive root level (no parent filter)
+  const drive = await getDriveClient();
+  if (!drive) return null;
+
+  const query = `name = '${ROOT_FOLDER_NAME}' and mimeType = 'application/vnd.google-apps.folder' and trashed = false and 'root' in parents`;
+  const response = await drive.files.list({
+    q: query,
+    spaces: 'drive',
+    fields: 'files(id, name)',
+    pageSize: 1
+  });
+
+  if (response.data.files && response.data.files.length > 0) {
+    cachedRootFolderId = response.data.files[0].id;
+    console.log(`📁 Found existing root folder "${ROOT_FOLDER_NAME}": ${cachedRootFolderId}`);
+  } else {
+    console.log(`📁 Creating root folder "${ROOT_FOLDER_NAME}" in Google Drive...`);
+    cachedRootFolderId = await createFolder(ROOT_FOLDER_NAME, null);
+    console.log(`📁 Root folder "${ROOT_FOLDER_NAME}" created: ${cachedRootFolderId}`);
+  }
+
+  return cachedRootFolderId;
+};
+
+/**
+ * Main service method to process file uploads for a candidate.
+ * Structure: igen users/ → Candidate Name - Mobile/ → photo + resume
  */
 const uploadCandidateFiles = async (name, mobile, photoDataUrl, resumeDataUrl, resumeFilename) => {
   const drive = await getDriveClient();
-  const parentFolderId = process.env.GOOGLE_DRIVE_PARENT_FOLDER_ID;
 
   if (!drive) {
     console.warn('⚠️ Google Drive client not configured. Files are not uploaded. Storing original values.');
@@ -208,51 +312,59 @@ const uploadCandidateFiles = async (name, mobile, photoDataUrl, resumeDataUrl, r
   }
 
   try {
-    const folderName = `${name} - ${mobile}`;
-    let folderId = await findFolder(folderName, parentFolderId);
+    // Step 1: Get or create root "igen users" folder
+    const rootFolderId = await getOrCreateRootFolder();
+    if (!rootFolderId) throw new Error('Could not get or create root folder "igen users"');
 
-    if (!folderId) {
-      console.log(`📁 Candidate folder "${folderName}" not found. Creating a new one...`);
-      folderId = await createFolder(folderName, parentFolderId);
-      console.log(`📁 Candidate folder created successfully: ${folderId}`);
+    // Step 2: Get or create "Candidate Name - Mobile" folder inside "igen users"
+    const candidateFolderName = `${name} - ${mobile}`;
+    let candidateFolderId = await findFolder(candidateFolderName, rootFolderId);
+
+    if (!candidateFolderId) {
+      console.log(`📁 Creating candidate folder "${candidateFolderName}" inside "${ROOT_FOLDER_NAME}"...`);
+      candidateFolderId = await createFolder(candidateFolderName, rootFolderId);
+      console.log(`📁 Candidate folder created: ${candidateFolderId}`);
     } else {
-      console.log(`📁 Found existing candidate folder: ${folderId}`);
+      console.log(`📁 Found existing candidate folder "${candidateFolderName}": ${candidateFolderId}`);
     }
 
     let photoUrl = photoDataUrl || '';
     let resumeUrl = resumeDataUrl || '';
 
-    // Process photo base64
+    // Step 3: Upload photo (delete old one first)
     if (photoDataUrl && photoDataUrl.startsWith('data:')) {
+      await deleteExistingFilesInFolder(candidateFolderId, 'photo');
+
       const parsed = parseBase64DataUrl(photoDataUrl);
       if (parsed) {
         let ext = 'jpg';
         if (parsed.mimeType === 'image/png') ext = 'png';
         else if (parsed.mimeType === 'image/gif') ext = 'gif';
 
-        const fileName = `photo_${Date.now()}.${ext}`;
-        console.log(`Uploading candidate photo (${fileName}) to Google Drive...`);
-        const fileData = await uploadFileToFolder(fileName, parsed.mimeType, parsed.buffer, folderId);
-        
+        const fileName = `photo_${name.replace(/\s+/g, '_')}.${ext}`;
+        console.log(`📤 Uploading photo "${fileName}" to Drive: igen users/${candidateFolderName}/`);
+        const fileData = await uploadFileToFolder(fileName, parsed.mimeType, parsed.buffer, candidateFolderId);
+
         if (fileData && fileData.id) {
-          // Direct displayable link for <img> tag inside frontend
           photoUrl = `https://drive.google.com/thumbnail?id=${fileData.id}&sz=w500`;
-          console.log(`✅ Photo uploaded successfully. Link: ${photoUrl}`);
+          console.log(`✅ Photo uploaded. Link: ${photoUrl}`);
         }
       }
     }
 
-    // Process resume base64
+    // Step 4: Upload resume (delete old one first)
     if (resumeDataUrl && resumeDataUrl.startsWith('data:')) {
+      await deleteExistingFilesInFolder(candidateFolderId, 'resume');
+
       const parsed = parseBase64DataUrl(resumeDataUrl);
       if (parsed) {
-        const fileName = resumeFilename || `resume_${Date.now()}.pdf`;
-        console.log(`Uploading candidate CV/resume (${fileName}) to Google Drive...`);
-        const fileData = await uploadFileToFolder(fileName, parsed.mimeType, parsed.buffer, folderId);
+        const fileName = resumeFilename || `resume_${name.replace(/\s+/g, '_')}.pdf`;
+        console.log(`📤 Uploading resume "${fileName}" to Drive: igen users/${candidateFolderName}/`);
+        const fileData = await uploadFileToFolder(fileName, parsed.mimeType, parsed.buffer, candidateFolderId);
 
         if (fileData && fileData.webViewLink) {
           resumeUrl = fileData.webViewLink;
-          console.log(`✅ Resume uploaded successfully. Link: ${resumeUrl}`);
+          console.log(`✅ Resume uploaded. Link: ${resumeUrl}`);
         }
       }
     }
@@ -274,5 +386,8 @@ const uploadCandidateFiles = async (name, mobile, photoDataUrl, resumeDataUrl, r
 
 module.exports = {
   uploadCandidateFiles,
-  getDriveClient
+  getDriveClient,
+  deleteFileFromDrive,
+  deleteExistingFilesInFolder
 };
+
