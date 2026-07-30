@@ -49,6 +49,7 @@ app.use('/api', apiLimiter);
 app.get('/', (req, res) => {
   res.json({
     message: '🚀 iGEN Talent Acquisition Backend API is running!',
+    version: '1.0.5-companies-active',
     status: 'ok',
     health: '/api/health',
     timestamp: new Date().toISOString(),
