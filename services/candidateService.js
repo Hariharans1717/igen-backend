@@ -7,6 +7,16 @@ const {
   mapCandidateStatusToDb,
 } = require('../utils/mappers');
 
+const maskAadhaar = (aadhaar) => {
+  if (!aadhaar) return undefined;
+  const digitsOnly = aadhaar.replace(/\D/g, '');
+  if (digitsOnly.length >= 4) {
+    const last4 = digitsOnly.slice(-4);
+    return `XXXX-XXXX-${last4}`;
+  }
+  return 'XXXX-XXXX-' + aadhaar.slice(-4);
+};
+
 const mapCandidateRow = (row) => ({
   id: row.id,
   name: row.name,
@@ -15,8 +25,15 @@ const mapCandidateRow = (row) => ({
   employmentStatus: mapEmploymentStatusFromDb(row.employment_status),
   currentCompany: row.current_company || undefined,
   currentDesignation: row.current_designation || undefined,
+  department: row.department || undefined,
   currentCTC: row.current_ctc ? parseFloat(row.current_ctc) : undefined,
+  currentCurrency: row.current_currency || 'INR',
   expectedCTC: parseFloat(row.expected_ctc),
+  expectedCurrency: row.expected_currency || 'INR',
+  aadhaarNumber: row.aadhaar_number || undefined,
+  aadhaarMasked: maskAadhaar(row.aadhaar_number),
+  aadhaarLast4: row.aadhaar_last4 || (row.aadhaar_number ? row.aadhaar_number.replace(/\D/g, '').slice(-4) : undefined),
+  panNumber: row.pan_number || undefined,
   experience: row.experience_years ? parseFloat(row.experience_years) : undefined,
   preferredLocation: row.preferred_location,
   skills: row.skills || [],
@@ -26,6 +43,9 @@ const mapCandidateRow = (row) => ({
   createdBy: row.created_by,
   createdAt: row.created_at,
   updatedAt: row.updated_at,
+  noticePeriod: row.notice_period || undefined,
+  currentLocation: row.current_location || undefined,
+  remarks: row.remarks || undefined,
   photoUrl: row.photo_url || undefined,
   resumeUrl: row.resume_url || undefined,
   resumeFilename: row.resume_filename || undefined,
@@ -38,16 +58,25 @@ const buildUpdate = (data) => {
     mobile: 'mobile',
     employmentStatus: 'employment_status',
     expectedCTC: 'expected_ctc',
+    expectedCurrency: 'expected_currency',
     preferredLocation: 'preferred_location',
     skills: 'skills',
     status: 'status',
     currentCompany: 'current_company',
     currentDesignation: 'current_designation',
+    department: 'department',
     currentCTC: 'current_ctc',
+    currentCurrency: 'current_currency',
     experience: 'experience_years',
     photoUrl: 'photo_url',
     resumeUrl: 'resume_url',
     resumeFilename: 'resume_filename',
+    aadhaarNumber: 'aadhaar_number',
+    aadhaarLast4: 'aadhaar_last4',
+    panNumber: 'pan_number',
+    noticePeriod: 'notice_period',
+    currentLocation: 'current_location',
+    remarks: 'remarks',
   };
 
   const keys = Object.keys(fieldMap).filter((key) => Object.prototype.hasOwnProperty.call(data, key));
@@ -255,24 +284,30 @@ const createCandidate = async (data, userId) => {
     
     console.log('♻️ Restoring inactive candidate:', existingCandidate.id);
     
+    const aadhaarLast4 = data.aadhaarNumber ? data.aadhaarNumber.replace(/\D/g, '').slice(-4) : (data.aadhaarLast4 || null);
+    const currentCurrency = data.currentCurrency || 'INR';
+    const expectedCurrency = data.expectedCurrency || 'INR';
+
     // Restore and update the inactive candidate
     const result = await pool.query(
       `UPDATE candidates SET 
         name=$1, email=$2, mobile=$3, employment_status=$4, expected_ctc=$5, preferred_location=$6,
         skills=$7, current_company=$8, current_designation=$9, current_ctc=$10, experience_years=$11,
         status=$12, created_by=$13, updated_at=NOW(),
-        photo_url=$14, resume_url=$15, resume_filename=$16
-       WHERE id=$17 RETURNING *`,
+        photo_url=$14, resume_url=$15, resume_filename=$16,
+        aadhaar_number=$17, aadhaar_last4=$18, pan_number=$19, current_currency=$20, expected_currency=$21
+       WHERE id=$22 RETURNING *`,
       [
         data.name, data.email, data.mobile, employmentStatus, data.expectedCTC, data.preferredLocation,
         data.skills, data.currentCompany || null, data.currentDesignation || null, data.currentCTC || null, data.experience || null,
-        status, userId, finalPhotoUrl || null, finalResumeUrl || null, finalResumeFilename || null, existingCandidate.id
+        status, userId, finalPhotoUrl || null, finalResumeUrl || null, finalResumeFilename || null,
+        data.aadhaarNumber || null, aadhaarLast4, data.panNumber ? data.panNumber.toUpperCase() : null, currentCurrency, expectedCurrency,
+        existingCandidate.id
       ]
     );
     
     candidate = result.rows[0];
     console.log('✅ Candidate restored:', candidate.id);
-    console.log('📊 Restored candidate data:', JSON.stringify(candidate, null, 2));
 
     await pool.query(
       `INSERT INTO candidate_timeline (candidate_id, hr_user_id, action, note)
@@ -281,29 +316,62 @@ const createCandidate = async (data, userId) => {
     );
   } else {
     console.log('➕ Creating new candidate');
-    
+    const aadhaarLast4 = data.aadhaarNumber ? data.aadhaarNumber.replace(/\D/g, '').slice(-4) : (data.aadhaarLast4 || null);
+    const currentCurrency = data.currentCurrency || 'INR';
+    const expectedCurrency = data.expectedCurrency || 'INR';
+
     const result = await pool.query(
       `INSERT INTO candidates (
         name, email, mobile, employment_status, expected_ctc, preferred_location,
         skills, current_company, current_designation, current_ctc, experience_years,
-        status, created_by, photo_url, resume_url, resume_filename
-      ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16) RETURNING *`,
+        status, created_by, photo_url, resume_url, resume_filename,
+        aadhaar_number, aadhaar_last4, pan_number, current_currency, expected_currency
+      ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21) RETURNING *`,
       [
         data.name, data.email, data.mobile, employmentStatus, data.expectedCTC, data.preferredLocation,
         data.skills, data.currentCompany || null, data.currentDesignation || null, data.currentCTC || null, data.experience || null,
-        status, userId, finalPhotoUrl || null, finalResumeUrl || null, finalResumeFilename || null
+        status, userId, finalPhotoUrl || null, finalResumeUrl || null, finalResumeFilename || null,
+        data.aadhaarNumber || null, aadhaarLast4, data.panNumber ? data.panNumber.toUpperCase() : null, currentCurrency, expectedCurrency
       ]
     );
     
     candidate = result.rows[0];
     console.log('✅ Candidate created:', candidate.id);
-    console.log('📊 Created candidate data:', JSON.stringify(candidate, null, 2));
 
     await pool.query(
       `INSERT INTO candidate_timeline (candidate_id, hr_user_id, action, note)
        VALUES ($1, $2, $3, $4)`,
       [candidate.id, userId, 'Candidate Created', `Profile created for ${candidate.name}`]
     );
+  }
+
+  // Insert into candidate_documents & candidate_salary for normalization compliance
+  try {
+    if (data.aadhaarNumber || data.panNumber) {
+      await pool.query(
+        `INSERT INTO candidate_documents (candidate_id, aadhaar_encrypted, aadhaar_last4, pan_number)
+         VALUES ($1, $2, $3, $4)
+         ON CONFLICT (candidate_id) DO UPDATE SET
+           aadhaar_encrypted = EXCLUDED.aadhaar_encrypted,
+           aadhaar_last4 = EXCLUDED.aadhaar_last4,
+           pan_number = EXCLUDED.pan_number`,
+        [candidate.id, data.aadhaarNumber || 'MASKED', candidate.aadhaar_last4 || '0000', data.panNumber ? data.panNumber.toUpperCase() : '']
+      );
+    }
+
+    await pool.query(
+      `INSERT INTO candidate_salary (candidate_id, current_ctc, current_currency, expected_ctc, expected_currency)
+       VALUES ($1, $2, $3, $4, $5)
+       ON CONFLICT (candidate_id) DO UPDATE SET
+         current_ctc = EXCLUDED.current_ctc,
+         current_currency = EXCLUDED.current_currency,
+         expected_ctc = EXCLUDED.expected_ctc,
+         expected_currency = EXCLUDED.expected_currency,
+         last_updated = NOW()`,
+      [candidate.id, data.currentCTC || null, data.currentCurrency || 'INR', data.expectedCTC, data.expectedCurrency || 'INR']
+    );
+  } catch (subErr) {
+    console.error('Warning inserting secondary candidate records:', subErr.message);
   }
 
   const mappedCandidate = mapCandidateRow(candidate);
@@ -325,6 +393,15 @@ const updateCandidate = async (id, data, userId) => {
   }
   if (Object.prototype.hasOwnProperty.call(data, 'status')) {
     updatePayload.status = mapCandidateStatusToDb(data.status);
+  }
+  if (data.aadhaarNumber) {
+    const digitsOnly = data.aadhaarNumber.replace(/\D/g, '');
+    if (digitsOnly.length >= 4) {
+      updatePayload.aadhaarLast4 = digitsOnly.slice(-4);
+    }
+  }
+  if (data.panNumber) {
+    updatePayload.panNumber = data.panNumber.toUpperCase();
   }
 
   // Handle new file uploads to Google Drive if updated files are base64 strings

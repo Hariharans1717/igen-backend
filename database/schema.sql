@@ -115,8 +115,53 @@ CREATE TABLE candidates (
     photo_url TEXT,
     resume_url TEXT,
     resume_filename VARCHAR(255),
+    aadhaar_number VARCHAR(255),
+    aadhaar_last4 VARCHAR(4),
+    pan_number VARCHAR(10),
+    current_currency VARCHAR(3) DEFAULT 'INR',
+    expected_currency VARCHAR(3) DEFAULT 'INR',
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+);
+
+-- Identity documents (encrypted & masked)
+CREATE TABLE candidate_documents (
+    doc_id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    document_identity_id BIGINT GENERATED ALWAYS AS IDENTITY,
+    candidate_id UUID NOT NULL REFERENCES candidates(id) ON DELETE CASCADE,
+    aadhaar_encrypted VARCHAR(255) NOT NULL,
+    aadhaar_last4 VARCHAR(4),
+    pan_number VARCHAR(10) NOT NULL,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE(candidate_id)
+);
+
+-- Salary information with multiple currencies
+CREATE TABLE candidate_salary (
+    salary_id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    salary_identity_id BIGINT GENERATED ALWAYS AS IDENTITY,
+    candidate_id UUID NOT NULL REFERENCES candidates(id) ON DELETE CASCADE,
+    current_ctc NUMERIC(12, 2),
+    current_currency VARCHAR(3) DEFAULT 'INR',
+    expected_ctc NUMERIC(12, 2) NOT NULL,
+    expected_currency VARCHAR(3) DEFAULT 'INR',
+    last_updated TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE(candidate_id)
+);
+
+-- Multiple currency offers tracker
+CREATE TABLE candidate_offers (
+    offer_id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    offer_identity_id BIGINT GENERATED ALWAYS AS IDENTITY,
+    candidate_id UUID NOT NULL REFERENCES candidates(id) ON DELETE CASCADE,
+    company_id UUID REFERENCES companies(company_id) ON DELETE SET NULL,
+    amount NUMERIC(12, 2) NOT NULL,
+    currency VARCHAR(3) NOT NULL DEFAULT 'INR',
+    status VARCHAR(20) DEFAULT 'pending',
+    offer_date TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    expiry_date TIMESTAMP WITH TIME ZONE,
+    notes TEXT,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
 
 -- 5. Partner Company Submission Module
@@ -137,10 +182,29 @@ CREATE TABLE candidate_submissions (
     CONSTRAINT unique_candidate_submission UNIQUE (candidate_id, client_company)
 );
 
+-- 4. Company & Branch Management Module
+CREATE TABLE companies (
+    company_id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    company_name VARCHAR(100) NOT NULL UNIQUE,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE branches (
+    branch_id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    company_id UUID NOT NULL REFERENCES companies(company_id) ON DELETE CASCADE,
+    branch_name VARCHAR(100) NOT NULL,
+    city VARCHAR(100),
+    is_headquarters BOOLEAN DEFAULT FALSE,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE(company_id, branch_name)
+);
+
 -- 6. Interview Tracking Module
 CREATE TABLE interviews (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     submission_id UUID REFERENCES candidate_submissions(id) ON DELETE CASCADE,
+    company_id UUID REFERENCES companies(company_id) ON DELETE SET NULL,
+    branch_id UUID REFERENCES branches(branch_id) ON DELETE SET NULL,
     interview_date TIMESTAMP WITH TIME ZONE NOT NULL,
     interview_round VARCHAR(50) NOT NULL,
     interview_mode interview_mode_enum NOT NULL,
@@ -174,15 +238,34 @@ CREATE TABLE candidate_timeline (
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
 
--- Additional Recruiter Notes
+-- Additional Recruiter Notes with Version History
 CREATE TABLE candidate_notes (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     candidate_id UUID REFERENCES candidates(id) ON DELETE CASCADE,
     hr_user_id UUID REFERENCES hr_users(id) ON DELETE SET NULL,
     title VARCHAR(255) DEFAULT 'Note',
     note_text TEXT NOT NULL,
+    category VARCHAR(50) DEFAULT 'personal_note',
+    priority VARCHAR(20) DEFAULT 'medium',
+    status VARCHAR(20) DEFAULT 'open',
+    tags TEXT[],
+    updated_by VARCHAR(100),
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
-    updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT check_priority CHECK (priority IN ('low', 'medium', 'high', 'critical')),
+    CONSTRAINT check_status CHECK (status IN ('open', 'in-progress', 'completed', 'archived'))
+);
+
+-- Note edit history (audit trail)
+CREATE TABLE note_edit_history (
+    edit_id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    edit_identity_id BIGINT GENERATED ALWAYS AS IDENTITY,
+    note_id UUID NOT NULL REFERENCES candidate_notes(id) ON DELETE CASCADE,
+    version INT NOT NULL,
+    previous_content TEXT NOT NULL,
+    edited_by VARCHAR(100) NOT NULL DEFAULT 'You',
+    edited_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    change_reason TEXT
 );
 
 -- 8. Follow-up Notification System

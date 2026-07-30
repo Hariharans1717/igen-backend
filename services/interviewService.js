@@ -5,7 +5,9 @@ const INTERVIEW_SELECT = `
   SELECT iv.*,
     COALESCE(cs.candidate_id, iv.candidate_id_uuid) AS candidate_id,
     COALESCE(c.name, iv.candidate_name) AS candidate_name,
-    cs.client_company AS company_name,
+    COALESCE(comp.company_name, cs.client_company) AS company_name,
+    b.branch_name,
+    b.city AS branch_city,
     cs.submission_date AS resume_submission_date,
     COALESCE(TO_CHAR(iv.interview_time, 'HH24:MI'), TO_CHAR(iv.interview_date, 'HH24:MI')) AS interview_time,
     iv.role,
@@ -13,6 +15,8 @@ const INTERVIEW_SELECT = `
   FROM interviews iv
   LEFT JOIN candidate_submissions cs ON cs.id = iv.submission_id
   LEFT JOIN candidates c ON c.id = cs.candidate_id OR c.id = iv.candidate_id_uuid
+  LEFT JOIN companies comp ON comp.company_id = iv.company_id
+  LEFT JOIN branches b ON b.branch_id = iv.branch_id
 `;
 
 const toDbMode = (mode) => {
@@ -32,9 +36,13 @@ const fromDbMode = (mode) => {
 const mapInterviewRow = (row) => ({
   id: row.id,
   submissionId: row.submission_id,
+  companyId: row.company_id || undefined,
+  branchId: row.branch_id || undefined,
   candidateId: row.candidate_id || '',
   candidateName: row.candidate_name || '',
   companyName: row.company_name || '',
+  branchName: row.branch_name || '',
+  branchCity: row.branch_city || '',
   resumeSubmissionDate: row.resume_submission_date || '',
   interviewDate: row.interview_date,
   interviewTime: row.interview_time || '',
@@ -152,14 +160,16 @@ const createInterview = async (data, userId) => {
 
   const insertResult = await pool.query(
     `INSERT INTO interviews (
-      submission_id, interview_date, interview_round, interview_mode,
+      submission_id, company_id, branch_id, interview_date, interview_round, interview_mode,
       interview_feedback, result, offered_ctc, offer_status,
       joining_date, recruiter_notes,
       title, interview_time, interview_type, interviewer_name,
       candidate_id_uuid, candidate_id_int, candidate_name, role, department
-    ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19) RETURNING *`,
+    ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21) RETURNING *`,
     [
-      data.submissionId,
+      data.submissionId || null,
+      data.companyId || data.company_id || null,
+      data.branchId || data.branch_id || null,
       data.interviewDate || data.interview_date,
       data.round || data.title,
       dbMode,
@@ -191,13 +201,15 @@ const createInterview = async (data, userId) => {
     offeredCTC: data.offeredCTC,
   });
 
-  await updateSubmissionFromInterview({
-    submissionId: data.submissionId,
-    offeredCTC: data.offeredCTC,
-    joiningDate: data.joiningDate,
-    notes: data.recruiterNotes,
-    status: pipeline.submissionStatus,
-  });
+  if (data.submissionId) {
+    await updateSubmissionFromInterview({
+      submissionId: data.submissionId,
+      offeredCTC: data.offeredCTC,
+      joiningDate: data.joiningDate,
+      notes: data.recruiterNotes,
+      status: pipeline.submissionStatus,
+    });
+  }
 
   if (interview.candidate_id) {
     await updateCandidateStatus(interview.candidate_id, pipeline.candidateStatus);
@@ -228,6 +240,8 @@ const updateInterview = async (id, data) => {
     index += 1;
   };
 
+  if (Object.prototype.hasOwnProperty.call(data, 'companyId') || Object.prototype.hasOwnProperty.call(data, 'company_id')) setField('company_id', data.companyId || data.company_id);
+  if (Object.prototype.hasOwnProperty.call(data, 'branchId') || Object.prototype.hasOwnProperty.call(data, 'branch_id')) setField('branch_id', data.branchId || data.branch_id);
   if (Object.prototype.hasOwnProperty.call(data, 'interviewDate')) setField('interview_date', data.interviewDate);
   if (Object.prototype.hasOwnProperty.call(data, 'round')) setField('interview_round', data.round);
   if (Object.prototype.hasOwnProperty.call(data, 'mode')) setField('interview_mode', toDbMode(data.mode));
