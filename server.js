@@ -1,5 +1,6 @@
 // =========================================
 // iGEN Talent Acquisition — Backend Server
+// Trigger Render Deployment: Companies & Candidate Schema
 // =========================================
 const path = require('path');
 require('dotenv').config({ path: path.resolve(__dirname, '.env') });
