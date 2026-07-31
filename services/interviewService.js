@@ -119,28 +119,8 @@ const updateCandidateStatus = async (candidateId, nextStatus) => {
   await pool.query('UPDATE candidates SET status = $1 WHERE id = $2', [nextStatus, candidateId]);
 };
 
-const updateSubmissionFromInterview = async ({ submissionId, offeredCTC, joiningDate, notes, status }) => {
-  const fields = [];
-  const values = [];
-  let index = 1;
-
-  const setField = (column, value) => {
-    fields.push(`${column} = $${index}`);
-    values.push(value);
-    index += 1;
-  };
-
-  if (offeredCTC !== undefined) setField('offer_ctc', offeredCTC);
-  if (joiningDate !== undefined) setField('joining_date', joiningDate);
-  if (notes !== undefined) setField('notes', notes);
-  if (status) setField('status', status);
-
-  if (fields.length === 0) return;
-
-  await pool.query(
-    `UPDATE candidate_submissions SET ${fields.join(', ')} WHERE id = $${index}`,
-    [...values, submissionId]
-  );
+const updateSubmissionFromInterview = async () => {
+  // Submission module removed - no-op
 };
 
 const derivePipelineStatus = ({ result, offerStatus, joiningDate, offeredCTC }) => {
@@ -281,6 +261,16 @@ const updateInterview = async (id, data) => {
 
   if (row.candidate_id) {
     await updateCandidateStatus(row.candidate_id, pipeline.candidateStatus);
+    await pool.query(
+      `INSERT INTO candidate_timeline (candidate_id, action, note, related_company)
+       VALUES ($1, $2, $3, $4)`,
+      [
+        row.candidate_id,
+        `Interview Updated (${row.interview_round || row.title || 'Round'})`,
+        `Result: ${row.result || 'pending'}${row.interview_feedback ? ' — Feedback: ' + row.interview_feedback : ''}`,
+        row.company_name || null,
+      ]
+    );
   }
 
   return mapInterviewRow(row);

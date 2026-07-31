@@ -122,6 +122,12 @@ const updateNote = async (id, content, title, userId, category, priority, status
     [noteTitle, noteContent, noteCategory, notePriority, noteStatus, id]
   );
 
+  await pool.query(
+    `INSERT INTO candidate_timeline (candidate_id, hr_user_id, action, note)
+     VALUES ($1, $2, $3, $4)`,
+    [note.candidate_id, userId, `Note Updated (${noteCategory.replace(/_/g, ' ')})`, noteContent]
+  );
+
   const updatedNotes = await getNotesByCandidate(note.candidate_id);
   const updatedNote = updatedNotes.find(n => n.id === id);
 
@@ -134,6 +140,13 @@ const deleteNote = async (id, userId) => {
   const note = noteResult.rows[0];
 
   await pool.query('DELETE FROM candidate_notes WHERE id = $1', [id]);
+
+  await pool.query(
+    `INSERT INTO candidate_timeline (candidate_id, hr_user_id, action, note)
+     VALUES ($1, $2, $3, $4)`,
+    [note.candidate_id, userId, 'Note Deleted', `Note "${note.title}" was deleted.`]
+  );
+
   return true;
 };
 

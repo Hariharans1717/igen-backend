@@ -24,24 +24,6 @@ const CANDIDATE_STATUSES = [
   'archived',
 ];
 
-const SUBMISSION_STATUSES = [
-  'submitted',
-  'shortlisted',
-  'interviewing',
-  'interview_scheduled',
-  'interview_completed',
-  'offered',
-  'offer_accepted',
-  'joined',
-  'rejected',
-  'withdrawn',
-  'on_hold',
-  'Interview Passed',
-  'Interview Failed',
-  'Interview On Hold',
-  'Next Round Scheduled',
-];
-
 const INTERVIEW_RESULTS = [
   'pending',
   'cleared',
@@ -75,7 +57,6 @@ module.exports = {
   USER_ROLES,
   EMPLOYMENT_STATUSES,
   CANDIDATE_STATUSES,
-  SUBMISSION_STATUSES,
   INTERVIEW_RESULTS,
   INTERVIEW_MODES,
   NOTIFICATION_TYPES,

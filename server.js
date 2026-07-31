@@ -67,7 +67,6 @@ app.get('/api/health', (req, res) => {
 // ---- Route Mounting ----
 const authRoutes = require('./routes/auth');
 const candidateRoutes = require('./routes/candidates');
-const submissionRoutes = require('./routes/submissions');
 const interviewRoutes = require('./routes/interviews');
 const timelineRoutes = require('./routes/timeline');
 const notesRoutes = require('./routes/notes');
@@ -79,7 +78,6 @@ const companyRoutes = require('./routes/companies');
 
 app.use('/api/auth', authRoutes);
 app.use('/api/candidates', candidateRoutes);
-app.use('/api/submissions', submissionRoutes);
 app.use('/api/interviews', interviewRoutes);
 app.use('/api/timeline', timelineRoutes);
 app.use('/api/notes', notesRoutes);
