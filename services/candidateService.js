@@ -295,13 +295,15 @@ const createCandidate = async (data, userId) => {
         skills=$7, current_company=$8, current_designation=$9, current_ctc=$10, experience_years=$11,
         status=$12, created_by=$13, updated_at=NOW(),
         photo_url=$14, resume_url=$15, resume_filename=$16,
-        aadhaar_number=$17, aadhaar_last4=$18, pan_number=$19, current_currency=$20, expected_currency=$21
-       WHERE id=$22 RETURNING *`,
+        aadhaar_number=$17, aadhaar_last4=$18, pan_number=$19, current_currency=$20, expected_currency=$21,
+        department=$22, notice_period=$23, current_location=$24, remarks=$25
+       WHERE id=$26 RETURNING *`,
       [
         data.name, data.email, data.mobile, employmentStatus, data.expectedCTC, data.preferredLocation,
         data.skills, data.currentCompany || null, data.currentDesignation || null, data.currentCTC || null, data.experience || null,
         status, userId, finalPhotoUrl || null, finalResumeUrl || null, finalResumeFilename || null,
         data.aadhaarNumber || null, aadhaarLast4, data.panNumber ? data.panNumber.toUpperCase() : null, currentCurrency, expectedCurrency,
+        data.department || null, data.noticePeriod || null, data.currentLocation || null, data.remarks || null,
         existingCandidate.id
       ]
     );
@@ -325,13 +327,15 @@ const createCandidate = async (data, userId) => {
         name, email, mobile, employment_status, expected_ctc, preferred_location,
         skills, current_company, current_designation, current_ctc, experience_years,
         status, created_by, photo_url, resume_url, resume_filename,
-        aadhaar_number, aadhaar_last4, pan_number, current_currency, expected_currency
-      ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21) RETURNING *`,
+        aadhaar_number, aadhaar_last4, pan_number, current_currency, expected_currency,
+        department, notice_period, current_location, remarks
+      ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25) RETURNING *`,
       [
         data.name, data.email, data.mobile, employmentStatus, data.expectedCTC, data.preferredLocation,
         data.skills, data.currentCompany || null, data.currentDesignation || null, data.currentCTC || null, data.experience || null,
         status, userId, finalPhotoUrl || null, finalResumeUrl || null, finalResumeFilename || null,
-        data.aadhaarNumber || null, aadhaarLast4, data.panNumber ? data.panNumber.toUpperCase() : null, currentCurrency, expectedCurrency
+        data.aadhaarNumber || null, aadhaarLast4, data.panNumber ? data.panNumber.toUpperCase() : null, currentCurrency, expectedCurrency,
+        data.department || null, data.noticePeriod || null, data.currentLocation || null, data.remarks || null
       ]
     );
     
