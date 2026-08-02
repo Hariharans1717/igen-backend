@@ -118,6 +118,9 @@ CREATE TABLE candidates (
     aadhaar_number VARCHAR(255),
     aadhaar_last4 VARCHAR(4),
     pan_number VARCHAR(10),
+    candidate_code VARCHAR(50),
+    dob DATE,
+    expected_hike_percent NUMERIC(5,2),
     current_currency VARCHAR(3) DEFAULT 'INR',
     expected_currency VARCHAR(3) DEFAULT 'INR',
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
@@ -186,6 +189,7 @@ CREATE TABLE candidate_submissions (
 CREATE TABLE companies (
     company_id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     company_name VARCHAR(100) NOT NULL UNIQUE,
+    company_code VARCHAR(50),
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
 

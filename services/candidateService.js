@@ -30,10 +30,13 @@ const mapCandidateRow = (row) => ({
   currentCurrency: row.current_currency || 'INR',
   expectedCTC: parseFloat(row.expected_ctc),
   expectedCurrency: row.expected_currency || 'INR',
+  expectedHikePercent: row.expected_hike_percent ? parseFloat(row.expected_hike_percent) : undefined,
   aadhaarNumber: row.aadhaar_number || undefined,
   aadhaarMasked: maskAadhaar(row.aadhaar_number),
   aadhaarLast4: row.aadhaar_last4 || (row.aadhaar_number ? row.aadhaar_number.replace(/\D/g, '').slice(-4) : undefined),
   panNumber: row.pan_number || undefined,
+  candidateCode: row.candidate_code || undefined,
+  dob: row.dob ? (row.dob instanceof Date ? `${row.dob.getFullYear()}-${String(row.dob.getMonth() + 1).padStart(2, '0')}-${String(row.dob.getDate()).padStart(2, '0')}` : String(row.dob).slice(0, 10)) : undefined,
   experience: row.experience_years ? parseFloat(row.experience_years) : undefined,
   preferredLocation: row.preferred_location,
   skills: row.skills || [],
@@ -74,6 +77,9 @@ const buildUpdate = (data) => {
     aadhaarNumber: 'aadhaar_number',
     aadhaarLast4: 'aadhaar_last4',
     panNumber: 'pan_number',
+    candidateCode: 'candidate_code',
+    dob: 'dob',
+    expectedHikePercent: 'expected_hike_percent',
     noticePeriod: 'notice_period',
     currentLocation: 'current_location',
     remarks: 'remarks',
@@ -119,6 +125,7 @@ const listCandidates = async ({
       c.name ILIKE $${paramIndex} OR
       c.email ILIKE $${paramIndex} OR
       c.mobile ILIKE $${paramIndex} OR
+      c.candidate_code ILIKE $${paramIndex} OR
       EXISTS (SELECT 1 FROM unnest(c.skills) s WHERE s ILIKE $${paramIndex})
     )`);
     params.push(`%${search}%`);
@@ -296,14 +303,16 @@ const createCandidate = async (data, userId) => {
         status=$12, created_by=$13, updated_at=NOW(),
         photo_url=$14, resume_url=$15, resume_filename=$16,
         aadhaar_number=$17, aadhaar_last4=$18, pan_number=$19, current_currency=$20, expected_currency=$21,
-        department=$22, notice_period=$23, current_location=$24, remarks=$25
-       WHERE id=$26 RETURNING *`,
+        department=$22, notice_period=$23, current_location=$24, remarks=$25,
+        candidate_code=$26, dob=$27, expected_hike_percent=$28
+       WHERE id=$29 RETURNING *`,
       [
         data.name, data.email, data.mobile, employmentStatus, data.expectedCTC, data.preferredLocation,
         data.skills, data.currentCompany || null, data.currentDesignation || null, data.currentCTC || null, data.experience || null,
         status, userId, finalPhotoUrl || null, finalResumeUrl || null, finalResumeFilename || null,
         data.aadhaarNumber || null, aadhaarLast4, data.panNumber ? data.panNumber.toUpperCase() : null, currentCurrency, expectedCurrency,
         data.department || null, data.noticePeriod || null, data.currentLocation || null, data.remarks || null,
+        data.candidateCode || null, data.dob || null, data.expectedHikePercent != null ? data.expectedHikePercent : null,
         existingCandidate.id
       ]
     );
@@ -328,14 +337,15 @@ const createCandidate = async (data, userId) => {
         skills, current_company, current_designation, current_ctc, experience_years,
         status, created_by, photo_url, resume_url, resume_filename,
         aadhaar_number, aadhaar_last4, pan_number, current_currency, expected_currency,
-        department, notice_period, current_location, remarks
-      ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25) RETURNING *`,
+        department, notice_period, current_location, remarks, candidate_code, dob, expected_hike_percent
+      ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27,$28) RETURNING *`,
       [
         data.name, data.email, data.mobile, employmentStatus, data.expectedCTC, data.preferredLocation,
         data.skills, data.currentCompany || null, data.currentDesignation || null, data.currentCTC || null, data.experience || null,
         status, userId, finalPhotoUrl || null, finalResumeUrl || null, finalResumeFilename || null,
         data.aadhaarNumber || null, aadhaarLast4, data.panNumber ? data.panNumber.toUpperCase() : null, currentCurrency, expectedCurrency,
-        data.department || null, data.noticePeriod || null, data.currentLocation || null, data.remarks || null
+        data.department || null, data.noticePeriod || null, data.currentLocation || null, data.remarks || null,
+        data.candidateCode || null, data.dob || null, data.expectedHikePercent != null ? data.expectedHikePercent : null
       ]
     );
     
@@ -364,15 +374,16 @@ const createCandidate = async (data, userId) => {
     }
 
     await pool.query(
-      `INSERT INTO candidate_salary (candidate_id, current_ctc, current_currency, expected_ctc, expected_currency)
-       VALUES ($1, $2, $3, $4, $5)
+      `INSERT INTO candidate_salary (candidate_id, current_ctc, current_currency, expected_ctc, expected_currency, expected_hike_percent)
+       VALUES ($1, $2, $3, $4, $5, $6)
        ON CONFLICT (candidate_id) DO UPDATE SET
          current_ctc = EXCLUDED.current_ctc,
          current_currency = EXCLUDED.current_currency,
          expected_ctc = EXCLUDED.expected_ctc,
          expected_currency = EXCLUDED.expected_currency,
+         expected_hike_percent = EXCLUDED.expected_hike_percent,
          last_updated = NOW()`,
-      [candidate.id, data.currentCTC || null, data.currentCurrency || 'INR', data.expectedCTC, data.expectedCurrency || 'INR']
+      [candidate.id, data.currentCTC || null, data.currentCurrency || 'INR', data.expectedCTC, data.expectedCurrency || 'INR', data.expectedHikePercent != null ? data.expectedHikePercent : null]
     );
   } catch (subErr) {
     console.error('Warning inserting secondary candidate records:', subErr.message);

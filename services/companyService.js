@@ -5,6 +5,7 @@ const listCompanies = async () => {
     SELECT 
       c.company_id AS "companyId",
       c.company_name AS "companyName",
+      c.company_code AS "companyCode",
       c.created_at AS "createdAt",
       COALESCE(
         JSON_AGG(
@@ -20,7 +21,7 @@ const listCompanies = async () => {
       COUNT(b.branch_id)::int AS "branchCount"
     FROM companies c
     LEFT JOIN branches b ON b.company_id = c.company_id
-    GROUP BY c.company_id, c.company_name, c.created_at
+    GROUP BY c.company_id, c.company_name, c.company_code, c.created_at
     ORDER BY c.company_name ASC;
   `;
 
@@ -28,6 +29,7 @@ const listCompanies = async () => {
   return result.rows.map(row => ({
     companyId: row.companyId,
     companyName: row.companyName,
+    companyCode: row.companyCode || undefined,
     branchCount: row.branchCount,
     branches: row.branches || [],
     createdAt: row.createdAt
@@ -39,6 +41,7 @@ const getCompanyById = async (companyId) => {
     SELECT 
       c.company_id AS "companyId",
       c.company_name AS "companyName",
+      c.company_code AS "companyCode",
       c.created_at AS "createdAt",
       COALESCE(
         JSON_AGG(
@@ -55,7 +58,7 @@ const getCompanyById = async (companyId) => {
     FROM companies c
     LEFT JOIN branches b ON b.company_id = c.company_id
     WHERE c.company_id = $1
-    GROUP BY c.company_id, c.company_name, c.created_at;
+    GROUP BY c.company_id, c.company_name, c.company_code, c.created_at;
   `;
 
   const result = await pool.query(query, [companyId]);
@@ -64,6 +67,7 @@ const getCompanyById = async (companyId) => {
   return {
     companyId: row.companyId,
     companyName: row.companyName,
+    companyCode: row.companyCode || undefined,
     branchCount: row.branchCount,
     branches: row.branches || [],
     createdAt: row.createdAt
@@ -71,7 +75,7 @@ const getCompanyById = async (companyId) => {
 };
 
 const createCompany = async (data) => {
-  const { companyName, branches } = data;
+  const { companyName, companyCode, branches } = data;
 
   if (!companyName || typeof companyName !== 'string' || companyName.trim().length < 2 || companyName.trim().length > 100) {
     const err = new Error('Company name must be between 2 and 100 characters.');
@@ -90,8 +94,8 @@ const createCompany = async (data) => {
     await client.query('BEGIN');
 
     const compRes = await client.query(
-      `INSERT INTO companies (company_name) VALUES ($1) RETURNING company_id, company_name, created_at`,
-      [companyName.trim()]
+      `INSERT INTO companies (company_name, company_code) VALUES ($1, $2) RETURNING company_id, company_name, company_code, created_at`,
+      [companyName.trim(), companyCode ? companyCode.trim() : null]
     );
     const company = compRes.rows[0];
 
@@ -117,6 +121,7 @@ const createCompany = async (data) => {
     return {
       companyId: company.company_id,
       companyName: company.company_name,
+      companyCode: company.company_code || undefined,
       branchCount: insertedBranches.length,
       branches: insertedBranches,
       createdAt: company.created_at
