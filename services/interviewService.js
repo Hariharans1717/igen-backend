@@ -108,15 +108,38 @@ const getInterviewsByCandidate = async (candidateId) => {
   return result.rows.map(mapInterviewRow);
 };
 
-const updateCandidateStatus = async (candidateId, nextStatus) => {
+const updateCandidateStatus = async (candidateId) => {
   const current = await pool.query('SELECT status FROM candidates WHERE id = $1', [candidateId]);
   const currentStatus = current.rows[0]?.status;
-  if (!currentStatus) return;
+  if (!currentStatus || currentStatus === 'archived' || currentStatus === 'joined') return;
 
-  if (currentStatus === 'archived') return;
-  if ((currentStatus === 'joined' || currentStatus === 'rejected') && nextStatus !== 'joined') return;
+  const intRes = await pool.query(
+    `SELECT result, offer_status, joining_date
+     FROM interviews
+     WHERE candidate_id_uuid = $1
+     ORDER BY created_at DESC`,
+    [candidateId]
+  );
 
-  await pool.query('UPDATE candidates SET status = $1 WHERE id = $2', [nextStatus, candidateId]);
+  if (intRes.rows.length === 0) return;
+
+  const latest = intRes.rows[0];
+  const mappedResult = mapInterviewResultFromDb(latest.result);
+
+  let computedStatus = 'interview_scheduled';
+  if (latest.joining_date) {
+    computedStatus = 'joined';
+  } else if (latest.offer_status === 'accepted' || latest.offer_status === 'pending') {
+    computedStatus = 'offered';
+  } else if (mappedResult === 'rejected') {
+    computedStatus = 'rejected';
+  } else if (mappedResult === 'cleared') {
+    computedStatus = 'active';
+  } else {
+    computedStatus = 'interview_scheduled';
+  }
+
+  await pool.query('UPDATE candidates SET status = $1 WHERE id = $2', [computedStatus, candidateId]);
 };
 
 const updateSubmissionFromInterview = async () => {
@@ -129,7 +152,7 @@ const derivePipelineStatus = ({ result, offerStatus, joiningDate, offeredCTC }) 
   if (offerStatus === 'declined') return { submissionStatus: 'rejected', candidateStatus: 'rejected' };
   if (offerStatus === 'pending' || offeredCTC) return { submissionStatus: 'offered', candidateStatus: 'offered' };
   if (result === 'rejected') return { submissionStatus: 'Interview Failed', candidateStatus: 'rejected' };
-  if (result === 'cleared') return { submissionStatus: 'Interview Passed', candidateStatus: 'interview_scheduled' };
+  if (result === 'cleared') return { submissionStatus: 'Interview Passed', candidateStatus: 'active' };
   if (result === 'no_show' || result === 'rescheduled') return { submissionStatus: 'interview_scheduled', candidateStatus: 'interview_scheduled' };
   return { submissionStatus: 'interview_scheduled', candidateStatus: 'interview_scheduled' };
 };
@@ -192,7 +215,7 @@ const createInterview = async (data, userId) => {
   }
 
   if (interview.candidate_id) {
-    await updateCandidateStatus(interview.candidate_id, pipeline.candidateStatus);
+    await updateCandidateStatus(interview.candidate_id);
     await pool.query(
       `INSERT INTO candidate_timeline (candidate_id, hr_user_id, action, note, related_company)
        VALUES ($1, $2, $3, $4, $5)`,
@@ -260,7 +283,7 @@ const updateInterview = async (id, data) => {
   });
 
   if (row.candidate_id) {
-    await updateCandidateStatus(row.candidate_id, pipeline.candidateStatus);
+    await updateCandidateStatus(row.candidate_id);
     await pool.query(
       `INSERT INTO candidate_timeline (candidate_id, action, note, related_company)
        VALUES ($1, $2, $3, $4)`,

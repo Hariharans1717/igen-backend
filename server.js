@@ -95,8 +95,21 @@ console.log('   ✅ PUT    /api/candidates/:id');
 console.log('   ✅ DELETE /api/candidates/:id');
 console.log('   ✅ POST   /api/candidates/check-duplicate');
 
+// ---- Serve Frontend Build & SPA Fallback ----
+const frontendDistPath = path.join(__dirname, '../Talent-Acquisition-iGEN/dist');
+if (require('fs').existsSync(frontendDistPath)) {
+  app.use(express.static(frontendDistPath));
+  app.get('*', (req, res, next) => {
+    if (req.originalUrl.startsWith('/api')) return next();
+    res.sendFile(path.join(frontendDistPath, 'index.html'));
+  });
+}
+
 // ---- 404 Handler ----
 app.use((req, res) => {
+  if (req.accepts('html') && !req.originalUrl.startsWith('/api')) {
+    return res.redirect('/');
+  }
   console.warn(`⚠️ 404 Not Found: ${req.method} ${req.originalUrl}`);
   res.status(404).json({ error: `Route ${req.method} ${req.originalUrl} not found.` });
 });
