@@ -1,15 +1,22 @@
 const pool = require('../config/db');
 
-const mapArchiveEntry = (row) => ({
-  id: row.id,
-  candidateId: row.candidate_id,
-  candidateName: row.candidate_name || '',
-  companyName: row.joined_company,
-  joiningDate: row.joining_date || row.archive_date,
-  archivedDate: row.archive_date,
-  archivedBy: row.archived_by,
-  archivedByName: row.archived_by_name || '',
-});
+const mapArchiveEntry = (row) => {
+  const profileCandidate = row.profile_data?.candidate || {};
+  return {
+    id: row.id,
+    candidateId: row.candidate_id,
+    candidateName: row.candidate_name || profileCandidate.name || '',
+    companyName: row.joined_company,
+    department: row.department || profileCandidate.department || profileCandidate.dept || '',
+    designation: row.designation || profileCandidate.current_designation || profileCandidate.designation || '',
+    currentCTC: row.current_ctc || profileCandidate.current_ctc || profileCandidate.currentCTC || null,
+    currency: row.currency || profileCandidate.current_currency || profileCandidate.currentCurrency || 'INR',
+    joiningDate: row.joining_date || row.archive_date,
+    archivedDate: row.archive_date,
+    archivedBy: row.archived_by,
+    archivedByName: row.archived_by_name || '',
+  };
+};
 
 const listArchive = async ({ page, pageSize, search }) => {
   const offset = (page - 1) * pageSize;
@@ -18,7 +25,7 @@ const listArchive = async ({ page, pageSize, search }) => {
   let paramIndex = 1;
 
   if (search) {
-    whereClause = `WHERE (c.name ILIKE $${paramIndex} OR ga.joined_company ILIKE $${paramIndex})`;
+    whereClause = `WHERE (c.name ILIKE $${paramIndex} OR ga.joined_company ILIKE $${paramIndex} OR (c.department ILIKE $${paramIndex}) OR (c.current_designation ILIKE $${paramIndex}))`;
     params.push(`%${search}%`);
     paramIndex += 1;
   }
@@ -33,6 +40,10 @@ const listArchive = async ({ page, pageSize, search }) => {
 
   const dataResult = await pool.query(
     `SELECT ga.*, c.name AS candidate_name,
+      COALESCE(c.department, ga.profile_data->'candidate'->>'department') AS department,
+      COALESCE(c.current_designation, ga.profile_data->'candidate'->>'current_designation') AS designation,
+      COALESCE(c.current_ctc, (ga.profile_data->'candidate'->>'current_ctc')::numeric) AS current_ctc,
+      COALESCE(c.current_currency, ga.profile_data->'candidate'->>'current_currency') AS currency,
       CONCAT(u.first_name, ' ', u.last_name) AS archived_by_name,
       (ga.profile_data->>'joining_date') AS joining_date
      FROM greyhr_archive ga
