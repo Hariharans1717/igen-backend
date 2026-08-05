@@ -126,7 +126,13 @@ const listCandidates = async ({
       c.email ILIKE $${paramIndex} OR
       c.mobile ILIKE $${paramIndex} OR
       c.candidate_code ILIKE $${paramIndex} OR
-      EXISTS (SELECT 1 FROM unnest(c.skills) s WHERE s ILIKE $${paramIndex})
+      c.remarks ILIKE $${paramIndex} OR
+      c.department ILIKE $${paramIndex} OR
+      c.current_designation ILIKE $${paramIndex} OR
+      c.current_company ILIKE $${paramIndex} OR
+      EXISTS (SELECT 1 FROM unnest(c.skills) s WHERE s ILIKE $${paramIndex}) OR
+      EXISTS (SELECT 1 FROM candidate_notes cn WHERE cn.candidate_id = c.id AND (cn.note_text ILIKE $${paramIndex} OR cn.title ILIKE $${paramIndex})) OR
+      EXISTS (SELECT 1 FROM candidate_timeline ct WHERE ct.candidate_id = c.id AND ct.note ILIKE $${paramIndex})
     )`);
     params.push(`%${search}%`);
     paramIndex += 1;
