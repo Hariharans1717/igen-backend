@@ -113,6 +113,11 @@ const listCandidates = async ({
   ctcMax,
   skills,
   companyName,
+  flags,
+  isFavourite,
+  isFlagged,
+  isKey,
+  isHot,
 }) => {
   const offset = (page - 1) * pageSize;
   const whereClauses = ["c.status != 'inactive'"];
@@ -196,6 +201,23 @@ const listCandidates = async ({
       WHERE cs.candidate_id = c.id AND cs.client_company = $${paramIndex}
     )`);
     params.push(companyName);
+    paramIndex += 1;
+  }
+
+  const requestedFlags = [];
+  if (flags) {
+    const flagArr = Array.isArray(flags) ? flags : String(flags).split(',').map((f) => f.trim()).filter(Boolean);
+    requestedFlags.push(...flagArr);
+  }
+  if (isFavourite) requestedFlags.push('favourite');
+  if (isFlagged) requestedFlags.push('flagged');
+  if (isKey) requestedFlags.push('key');
+  if (isHot) requestedFlags.push('hot');
+
+  if (requestedFlags.length > 0) {
+    const uniqueFlags = Array.from(new Set(requestedFlags));
+    whereClauses.push(`c.tags && $${paramIndex}::text[]`);
+    params.push(uniqueFlags);
     paramIndex += 1;
   }
 

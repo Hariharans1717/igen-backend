@@ -68,6 +68,10 @@ const candidateUpdateSchema = z.object({
     currentLocation: z.string().trim().optional().nullable(),
     remarks: z.string().trim().optional().nullable(),
     notes: z.string().trim().optional().nullable(),
+    isFavourite: z.boolean().optional(),
+    isFlagged: z.boolean().optional(),
+    isKey: z.boolean().optional(),
+    isHot: z.boolean().optional(),
     createdBy: z.string().optional().nullable(),
   }),
 });
@@ -82,6 +86,11 @@ const candidateListSchema = z.object({
     ctcMax: z.coerce.number().nonnegative().optional(),
     skills: z.string().trim().optional(),
     companyName: z.string().trim().optional(),
+    flags: z.union([z.string(), z.array(z.string())]).optional(),
+    isFavourite: z.coerce.boolean().optional(),
+    isFlagged: z.coerce.boolean().optional(),
+    isKey: z.coerce.boolean().optional(),
+    isHot: z.coerce.boolean().optional(),
   }),
 });
 
