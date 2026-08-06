@@ -342,12 +342,13 @@ const uploadCandidateFiles = async (name, candidateCodeOrMobile, photoDataUrl, r
         else if (parsed.mimeType === 'image/gif') ext = 'gif';
 
         const fileName = `photo_${name.replace(/\s+/g, '_')}.${ext}`;
-        console.log(`📤 Uploading photo "${fileName}" to Drive: igen users/${candidateFolderName}/`);
+        const photoSizeKB = Math.round(parsed.buffer.length / 1024);
+        console.log(`📤 Uploading photo "${fileName}" (${photoSizeKB} KB) to Drive: igen candidates/${candidateFolderName}/`);
         const fileData = await uploadFileToFolder(fileName, parsed.mimeType, parsed.buffer, candidateFolderId);
 
         if (fileData && fileData.id) {
           photoUrl = `https://drive.google.com/thumbnail?id=${fileData.id}&sz=w500`;
-          console.log(`✅ Photo uploaded. Link: ${photoUrl}`);
+          console.log(`✅ Photo uploaded (${photoSizeKB} KB). Link: ${photoUrl}`);
         }
       }
     }
@@ -359,7 +360,8 @@ const uploadCandidateFiles = async (name, candidateCodeOrMobile, photoDataUrl, r
       const parsed = parseBase64DataUrl(resumeDataUrl);
       if (parsed) {
         const fileName = resumeFilename || `resume_${name.replace(/\s+/g, '_')}.pdf`;
-        console.log(`📤 Uploading resume "${fileName}" to Drive: igen users/${candidateFolderName}/`);
+        const resumeSizeKB = Math.round(parsed.buffer.length / 1024);
+        console.log(`📤 Uploading resume "${fileName}" (${resumeSizeKB} KB) to Drive: igen candidates/${candidateFolderName}/`);
         const fileData = await uploadFileToFolder(fileName, parsed.mimeType, parsed.buffer, candidateFolderId);
 
         if (fileData && fileData.webViewLink) {
