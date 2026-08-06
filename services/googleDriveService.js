@@ -209,7 +209,7 @@ const deleteExistingFilesInFolder = async (folderId, type) => {
     if (response.data.files && response.data.files.length > 0) {
       for (const file of response.data.files) {
         const isPhoto = file.name.toLowerCase().startsWith('photo') || (file.mimeType && file.mimeType.startsWith('image/'));
-        const isResume = !isPhoto || file.name.toLowerCase().startsWith('resume');
+        const isResume = file.name.toLowerCase().startsWith('resume') || (file.mimeType && (file.mimeType.includes('pdf') || file.mimeType.includes('word') || file.mimeType.includes('document') || file.mimeType.includes('octet-stream')));
 
         if ((type === 'photo' && isPhoto) || (type === 'resume' && isResume)) {
           console.log(`🗑️ Deleting old Google Drive file: ${file.name} (${file.id})`);
