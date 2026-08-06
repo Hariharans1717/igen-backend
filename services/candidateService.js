@@ -40,6 +40,7 @@ const mapCandidateRow = (row) => ({
   experience: row.experience_years ? parseFloat(row.experience_years) : undefined,
   preferredLocation: row.preferred_location,
   skills: row.skills || [],
+  tags: row.tags || [],
   status: row.is_archived ? 'archived' : mapCandidateStatusFromDb(row.status),
   isDeleted: row.status === 'inactive',
   isArchived: row.is_archived || false,
@@ -64,6 +65,7 @@ const buildUpdate = (data) => {
     expectedCurrency: 'expected_currency',
     preferredLocation: 'preferred_location',
     skills: 'skills',
+    tags: 'tags',
     status: 'status',
     currentCompany: 'current_company',
     currentDesignation: 'current_designation',
@@ -131,6 +133,7 @@ const listCandidates = async ({
       c.current_designation ILIKE $${paramIndex} OR
       c.current_company ILIKE $${paramIndex} OR
       EXISTS (SELECT 1 FROM unnest(c.skills) s WHERE s ILIKE $${paramIndex}) OR
+      EXISTS (SELECT 1 FROM unnest(c.tags) t WHERE t ILIKE $${paramIndex}) OR
       EXISTS (SELECT 1 FROM candidate_notes cn WHERE cn.candidate_id = c.id AND (cn.note_text ILIKE $${paramIndex} OR cn.title ILIKE $${paramIndex})) OR
       EXISTS (SELECT 1 FROM candidate_timeline ct WHERE ct.candidate_id = c.id AND ct.note ILIKE $${paramIndex})
     )`);

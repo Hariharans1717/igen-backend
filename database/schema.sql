@@ -103,6 +103,7 @@ CREATE TABLE candidates (
     expected_ctc NUMERIC(10, 2) NOT NULL,
     preferred_location VARCHAR(100) NOT NULL,
     skills TEXT[] NOT NULL,
+    tags TEXT[] DEFAULT '{}',
     status candidate_status_enum NOT NULL DEFAULT 'new',
     
     -- If employed
