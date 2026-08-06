@@ -262,7 +262,7 @@ const createCandidate = async (data, userId) => {
   // Upload files to Google Drive first if they are in base64 format
   const uploadResult = await googleDriveService.uploadCandidateFiles(
     data.name,
-    data.mobile,
+    data.candidateCode || data.mobile,
     data.photoUrl,
     data.resumeUrl,
     data.resumeFilename
@@ -430,13 +430,13 @@ const updateCandidate = async (id, data, userId) => {
 
   // Handle new file uploads to Google Drive if updated files are base64 strings
   const candidateName = data.name || existing.rows[0].name;
-  const candidateMobile = data.mobile || existing.rows[0].mobile;
+  const candidateIdOrCode = data.candidateCode || existing.rows[0].candidate_code || data.mobile || existing.rows[0].mobile;
 
   if ((data.photoUrl && data.photoUrl.startsWith('data:')) || (data.resumeUrl && data.resumeUrl.startsWith('data:'))) {
     console.log(`🔧 [candidateService.updateCandidate] Uploading updated base64 files for ${candidateName} to Google Drive`);
     const uploadResult = await googleDriveService.uploadCandidateFiles(
       candidateName,
-      candidateMobile,
+      candidateIdOrCode,
       data.photoUrl || existing.rows[0].photo_url,
       data.resumeUrl || existing.rows[0].resume_url,
       data.resumeFilename || existing.rows[0].resume_filename

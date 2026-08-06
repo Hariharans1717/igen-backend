@@ -262,10 +262,10 @@ const deleteFileFromDrive = async (fileIdOrUrl) => {
 };
 
 /**
- * Get or create the "igen users" root folder in Google Drive.
+ * Get or create the "igen candidates" root folder in Google Drive.
  * All candidate folders are nested inside this root folder.
  */
-const ROOT_FOLDER_NAME = 'igen users';
+const ROOT_FOLDER_NAME = 'igen candidates';
 let cachedRootFolderId = null;
 
 const getOrCreateRootFolder = async () => {
@@ -297,9 +297,9 @@ const getOrCreateRootFolder = async () => {
 
 /**
  * Main service method to process file uploads for a candidate.
- * Structure: igen users/ → Candidate Name - Mobile/ → photo + resume
+ * Structure: igen candidates/ → Candidate Name - Candidate Code or ID / → photo + resume
  */
-const uploadCandidateFiles = async (name, mobile, photoDataUrl, resumeDataUrl, resumeFilename) => {
+const uploadCandidateFiles = async (name, candidateCodeOrMobile, photoDataUrl, resumeDataUrl, resumeFilename) => {
   const drive = await getDriveClient();
 
   if (!drive) {
@@ -312,12 +312,12 @@ const uploadCandidateFiles = async (name, mobile, photoDataUrl, resumeDataUrl, r
   }
 
   try {
-    // Step 1: Get or create root "igen users" folder
+    // Step 1: Get or create root "igen candidates" folder
     const rootFolderId = await getOrCreateRootFolder();
-    if (!rootFolderId) throw new Error('Could not get or create root folder "igen users"');
+    if (!rootFolderId) throw new Error('Could not get or create root folder "igen candidates"');
 
-    // Step 2: Get or create "Candidate Name - Mobile" folder inside "igen users"
-    const candidateFolderName = `${name} - ${mobile}`;
+    // Step 2: Get or create "Candidate Name - Candidate Code/ID" folder inside "igen candidates"
+    const candidateFolderName = `${name} - ${candidateCodeOrMobile}`;
     let candidateFolderId = await findFolder(candidateFolderName, rootFolderId);
 
     if (!candidateFolderId) {
