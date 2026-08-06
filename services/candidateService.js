@@ -277,14 +277,16 @@ const getCandidateById = async (id) => {
 };
 
 const createCandidate = async (data, userId) => {
-  console.log('🔧 [candidateService.createCandidate] Processing candidate creation');
-  console.log('📝 Input data:', JSON.stringify(data, null, 2));
-  console.log('👤 Created by user:', userId);
+  // Ensure candidateCode is present for folder naming (e.g. HAR1001)
+  const candidateCode = data.candidateCode && data.candidateCode.trim() 
+    ? data.candidateCode.trim() 
+    : `CAN${Math.floor(1000 + Math.random() * 9000)}`;
+  data.candidateCode = candidateCode;
 
-  // Upload files to Google Drive first if they are in base64 format
+  // Upload files to Google Drive using Candidate Name and Candidate Code (ID)
   const uploadResult = await googleDriveService.uploadCandidateFiles(
     data.name,
-    data.candidateCode || data.mobile,
+    candidateCode,
     data.photoUrl,
     data.resumeUrl,
     data.resumeFilename
@@ -452,7 +454,7 @@ const updateCandidate = async (id, data, userId) => {
 
   // Handle new file uploads to Google Drive if updated files are base64 strings
   const candidateName = data.name || existing.rows[0].name;
-  const candidateIdOrCode = data.candidateCode || existing.rows[0].candidate_code || data.mobile || existing.rows[0].mobile;
+  const candidateIdOrCode = data.candidateCode || existing.rows[0].candidate_code || existing.rows[0].id;
 
   if ((data.photoUrl && data.photoUrl.startsWith('data:')) || (data.resumeUrl && data.resumeUrl.startsWith('data:'))) {
     console.log(`🔧 [candidateService.updateCandidate] Uploading updated base64 files for ${candidateName} to Google Drive`);
