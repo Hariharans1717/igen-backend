@@ -16,8 +16,8 @@ const createNote = async (req, res) => {
 };
 
 const updateNote = async (req, res) => {
-  const { content, title, category, priority, status, changeReason } = req.validated.body;
-  const result = await notesService.updateNote(req.params.id, content, title, req.user?.id, category, priority, status, changeReason);
+  const { content, title, category, priority, status, changeReason, attachmentDataUrl, attachmentName } = req.validated.body;
+  const result = await notesService.updateNote(req.params.id, content, title, req.user?.id, category, priority, status, changeReason, attachmentDataUrl, attachmentName);
   if (result?.error === 'not_found') return res.status(404).json({ error: 'Note not found.' });
   return res.json(result.note);
 };

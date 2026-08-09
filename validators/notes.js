@@ -10,6 +10,8 @@ const noteCreateSchema = z.object({
     priority: z.string().optional(),
     status: z.string().optional(),
     tags: z.array(z.string()).optional(),
+    attachmentDataUrl: z.string().optional(),
+    attachmentName: z.string().optional(),
   }),
 });
 
@@ -22,6 +24,8 @@ const noteUpdateSchema = z.object({
     priority: z.string().optional(),
     status: z.string().optional(),
     changeReason: z.string().optional(),
+    attachmentDataUrl: z.string().optional(),
+    attachmentName: z.string().optional(),
   }),
 });
 

@@ -386,10 +386,70 @@ const uploadCandidateFiles = async (name, candidateCodeOrMobile, photoDataUrl, r
   }
 };
 
+/**
+ * Upload a note attachment file for a candidate to Google Drive.
+ * Folder structure: igen candidates/ -> Candidate Name - Candidate Code or Mobile / -> note_att_<timestamp>_<filename>
+ */
+const uploadNoteAttachment = async (name, candidateCodeOrMobile, attachmentDataUrl, attachmentName) => {
+  const drive = await getDriveClient();
+
+  if (!drive || !attachmentDataUrl || !attachmentDataUrl.startsWith('data:')) {
+    return {
+      attachmentUrl: attachmentDataUrl || '',
+      attachmentName: attachmentName || ''
+    };
+  }
+
+  try {
+    const rootFolderId = await getOrCreateRootFolder();
+    if (!rootFolderId) throw new Error('Could not get or create root folder "igen candidates"');
+
+    const candidateFolderName = `${name} - ${candidateCodeOrMobile}`;
+    let candidateFolderId = await findFolder(candidateFolderName, rootFolderId);
+
+    if (!candidateFolderId) {
+      candidateFolderId = await createFolder(candidateFolderName, rootFolderId);
+    }
+
+    const parsed = parseBase64DataUrl(attachmentDataUrl);
+    if (!parsed) {
+      return { attachmentUrl: '', attachmentName: attachmentName || '' };
+    }
+
+    const cleanName = (attachmentName || 'note_attachment').replace(/[^a-zA-Z0-9_.-]/g, '_');
+    const fileName = cleanName;
+    const fileSizeKB = Math.round(parsed.buffer.length / 1024);
+    console.log(`📤 Uploading note attachment "${fileName}" (${fileSizeKB} KB) to Drive: igen candidates/${candidateFolderName}/`);
+
+    const fileData = await uploadFileToFolder(fileName, parsed.mimeType, parsed.buffer, candidateFolderId);
+
+    let attachmentUrl = '';
+    if (fileData && fileData.webViewLink) {
+      attachmentUrl = fileData.webViewLink;
+      console.log(`✅ Note attachment uploaded (${fileSizeKB} KB). Link: ${attachmentUrl}`);
+    } else if (fileData && fileData.id) {
+      attachmentUrl = `https://drive.google.com/file/d/${fileData.id}/view`;
+    }
+
+    return {
+      attachmentUrl: attachmentUrl || attachmentDataUrl,
+      attachmentName: fileName
+    };
+  } catch (error) {
+    console.error('❌ Error uploading note attachment to Google Drive:', error.message);
+    return {
+      attachmentUrl: attachmentDataUrl || '',
+      attachmentName: attachmentName || ''
+    };
+  }
+};
+
 module.exports = {
   uploadCandidateFiles,
+  uploadNoteAttachment,
   getDriveClient,
   deleteFileFromDrive,
   deleteExistingFilesInFolder
 };
+
 

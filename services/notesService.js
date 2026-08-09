@@ -1,4 +1,5 @@
 const pool = require('../config/db');
+const { uploadNoteAttachment } = require('./googleDriveService');
 
 const mapNoteRow = (row) => ({
   id: row.id,
@@ -10,6 +11,8 @@ const mapNoteRow = (row) => ({
   priority: row.priority || 'medium',
   status: row.status || 'open',
   tags: row.tags || [],
+  attachmentUrl: row.attachment_url || undefined,
+  attachmentName: row.attachment_name || undefined,
   createdBy: row.hr_user_id || 'system',
   createdByName: row.created_by_name || 'You',
   createdAt: row.created_at,
@@ -51,17 +54,44 @@ const getNotesByCandidate = async (candidateId) => {
   return result.rows.map(mapNoteRow);
 };
 
-const createNote = async ({ candidateId, content, title, category, priority, status, tags }, userId) => {
+const createNote = async ({ candidateId, content, title, category, priority, status, tags, attachmentDataUrl, attachmentName }, userId) => {
   const noteTitle = title || 'Note';
   const noteCategory = category || 'personal_note';
   const notePriority = priority || 'medium';
   const noteStatus = status || 'open';
   const noteTags = Array.isArray(tags) ? tags : [];
 
+  let finalAttachmentUrl = null;
+  let finalAttachmentName = null;
+
+  if (attachmentDataUrl) {
+    try {
+      const candRes = await pool.query('SELECT name, candidate_code, mobile FROM candidates WHERE id = $1', [candidateId]);
+      const cand = candRes.rows[0];
+      const candName = cand ? cand.name : 'Candidate';
+      const candCodeOrMobile = cand ? (cand.candidate_code || cand.mobile || 'Unknown') : 'Attachment';
+
+      const countRes = await pool.query('SELECT COUNT(*)::int AS count FROM candidate_notes WHERE candidate_id = $1', [candidateId]);
+      const noteIndex = (countRes.rows[0]?.count || 0) + 1;
+
+      let ext = 'pdf';
+      if (attachmentName && attachmentName.includes('.')) {
+        ext = attachmentName.split('.').pop().toLowerCase();
+      }
+      const formattedFileName = `${candName.trim().replace(/\s+/g, '_')}_note_${noteIndex}.${ext}`;
+
+      const driveRes = await uploadNoteAttachment(candName, candCodeOrMobile, attachmentDataUrl, formattedFileName);
+      finalAttachmentUrl = driveRes.attachmentUrl || null;
+      finalAttachmentName = driveRes.attachmentName || formattedFileName;
+    } catch (driveErr) {
+      console.error('Failed to upload note attachment to Drive:', driveErr.message);
+    }
+  }
+
   const result = await pool.query(
-    `INSERT INTO candidate_notes (candidate_id, hr_user_id, title, note_text, category, priority, status, tags)
-     VALUES ($1, $2, $3, $4, $5, $6, $7, $8) RETURNING *`,
-    [candidateId, userId, noteTitle, content, noteCategory, notePriority, noteStatus, noteTags]
+    `INSERT INTO candidate_notes (candidate_id, hr_user_id, title, note_text, category, priority, status, tags, attachment_url, attachment_name)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10) RETURNING *`,
+    [candidateId, userId, noteTitle, content, noteCategory, notePriority, noteStatus, noteTags, finalAttachmentUrl, finalAttachmentName]
   );
 
   const enriched = await pool.query(
@@ -84,7 +114,7 @@ const createNote = async ({ candidateId, content, title, category, priority, sta
   return noteData;
 };
 
-const updateNote = async (id, content, title, userId, category, priority, status, changeReason) => {
+const updateNote = async (id, content, title, userId, category, priority, status, changeReason, attachmentDataUrl, attachmentName) => {
   const noteResult = await pool.query('SELECT * FROM candidate_notes WHERE id = $1', [id]);
   if (noteResult.rows.length === 0) return { error: 'not_found' };
 
@@ -109,6 +139,34 @@ const updateNote = async (id, content, title, userId, category, priority, status
     );
   }
 
+  let finalAttachmentUrl = note.attachment_url;
+  let finalAttachmentName = note.attachment_name;
+
+  if (attachmentDataUrl) {
+    try {
+      const candRes = await pool.query('SELECT name, candidate_code, mobile FROM candidates WHERE id = $1', [note.candidate_id]);
+      const cand = candRes.rows[0];
+      const candName = cand ? cand.name : 'Candidate';
+      const candCodeOrMobile = cand ? (cand.candidate_code || cand.mobile || 'Unknown') : 'Attachment';
+
+      const notesRes = await pool.query('SELECT id FROM candidate_notes WHERE candidate_id = $1 ORDER BY created_at ASC', [note.candidate_id]);
+      let noteIndex = notesRes.rows.findIndex(n => n.id === id) + 1;
+      if (noteIndex <= 0) noteIndex = notesRes.rows.length || 1;
+
+      let ext = 'pdf';
+      if (attachmentName && attachmentName.includes('.')) {
+        ext = attachmentName.split('.').pop().toLowerCase();
+      }
+      const formattedFileName = `${candName.trim().replace(/\s+/g, '_')}_note_${noteIndex}.${ext}`;
+
+      const driveRes = await uploadNoteAttachment(candName, candCodeOrMobile, attachmentDataUrl, formattedFileName);
+      finalAttachmentUrl = driveRes.attachmentUrl || finalAttachmentUrl;
+      finalAttachmentName = driveRes.attachmentName || formattedFileName;
+    } catch (driveErr) {
+      console.error('Failed to upload updated note attachment to Drive:', driveErr.message);
+    }
+  }
+
   const noteTitle = title || note.title || 'Note';
   const noteCategory = category || note.category || 'personal_note';
   const notePriority = priority || note.priority || 'medium';
@@ -117,9 +175,9 @@ const updateNote = async (id, content, title, userId, category, priority, status
 
   await pool.query(
     `UPDATE candidate_notes 
-     SET title = $1, note_text = $2, category = $3, priority = $4, status = $5, updated_at = CURRENT_TIMESTAMP 
-     WHERE id = $6`,
-    [noteTitle, noteContent, noteCategory, notePriority, noteStatus, id]
+     SET title = $1, note_text = $2, category = $3, priority = $4, status = $5, attachment_url = $6, attachment_name = $7, updated_at = CURRENT_TIMESTAMP 
+     WHERE id = $8`,
+    [noteTitle, noteContent, noteCategory, notePriority, noteStatus, finalAttachmentUrl, finalAttachmentName, id]
   );
 
   await pool.query(
