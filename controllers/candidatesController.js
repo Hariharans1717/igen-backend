@@ -52,6 +52,17 @@ const checkDuplicate = async (req, res) => {
   return res.json(result);
 };
 
+const updateStatus = async (req, res) => {
+  const { id } = req.params;
+  const { status } = req.body;
+  if (!status) {
+    return res.status(400).json({ error: 'Status is required.' });
+  }
+  const candidate = await candidateService.updateCandidate(id, { status }, req.user?.id);
+  if (!candidate) return res.status(404).json({ error: 'Candidate not found.' });
+  return res.json({ success: true, candidate });
+};
+
 const getCandidateHistory = async (req, res) => {
   const history = await candidateService.getCandidateHistory(req.params.id);
   return res.json(history);
@@ -65,4 +76,5 @@ module.exports = {
   deleteCandidate,
   checkDuplicate,
   getCandidateHistory,
+  updateStatus,
 };
