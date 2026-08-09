@@ -11,7 +11,15 @@ const archiveCandidate = async (req, res) => {
   return res.status(201).json(entry);
 };
 
+const unarchiveCandidate = async (req, res) => {
+  const candidateId = req.params.candidateId || req.body.candidateId;
+  const candidate = await greyhrService.unarchiveCandidate(candidateId, req.user?.id);
+  if (!candidate) return res.status(404).json({ error: 'Archived candidate not found.' });
+  return res.json({ success: true, candidate });
+};
+
 module.exports = {
   listArchive,
   archiveCandidate,
+  unarchiveCandidate,
 };

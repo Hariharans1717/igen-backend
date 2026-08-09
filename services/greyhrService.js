@@ -107,7 +107,22 @@ const archiveCandidate = async ({ candidateId, companyName, joiningDate }, userI
   return mapArchiveEntry(enriched.rows[0]);
 };
 
+const unarchiveCandidate = async (candidateId, userId) => {
+  await pool.query('DELETE FROM greyhr_archive WHERE candidate_id = $1', [candidateId]);
+  const result = await pool.query(
+    "UPDATE candidates SET status = 'deployed', updated_at = NOW() WHERE id = $1 RETURNING *",
+    [candidateId]
+  );
+  await pool.query(
+    `INSERT INTO candidate_timeline (candidate_id, hr_user_id, action, note)
+     VALUES ($1, $2, 'Unarchived from GreyHR', 'Restored candidate from GreyHR archive to active candidates module')`,
+    [candidateId, userId || null]
+  );
+  return result.rows[0] || null;
+};
+
 module.exports = {
   listArchive,
   archiveCandidate,
+  unarchiveCandidate,
 };
