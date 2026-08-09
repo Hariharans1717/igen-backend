@@ -6,6 +6,15 @@ const {
   mapCandidateStatusFromDb,
   mapCandidateStatusToDb,
 } = require('../utils/mappers');
+const { serializeHistoryData } = require('../utils/historyUtils');
+
+const formatLocalDate = (value) => {
+  if (!(value instanceof Date)) return String(value).slice(0, 10);
+  const year = value.getFullYear();
+  const month = String(value.getMonth() + 1).padStart(2, '0');
+  const day = String(value.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+};
 
 const maskAadhaar = (aadhaar) => {
   if (!aadhaar) return undefined;
@@ -36,7 +45,7 @@ const mapCandidateRow = (row) => ({
   aadhaarLast4: row.aadhaar_last4 || (row.aadhaar_number ? row.aadhaar_number.replace(/\D/g, '').slice(-4) : undefined),
   panNumber: row.pan_number || undefined,
   candidateCode: row.candidate_code || undefined,
-  dob: row.dob ? (row.dob instanceof Date ? `${row.dob.getFullYear()}-${String(row.dob.getMonth() + 1).padStart(2, '0')}-${String(row.dob.getDate()).padStart(2, '0')}` : String(row.dob).slice(0, 10)) : undefined,
+  dob: row.dob ? formatLocalDate(row.dob) : undefined,
   experience: row.experience_years ? parseFloat(row.experience_years) : undefined,
   preferredLocation: row.preferred_location,
   skills: row.skills || [],
@@ -492,10 +501,13 @@ const updateCandidate = async (id, data, userId) => {
   );
 
   const oldData = existing.rows[0];
+  const oldDataForHistory = serializeHistoryData(oldData);
+  const newDataForHistory = serializeHistoryData(updated);
+
   await pool.query(
     `INSERT INTO candidate_history (candidate_id, changed_by, change_type, old_data, new_data)
      VALUES ($1, $2, $3, $4, $5)`,
-    [id, userId, 'update', JSON.stringify(oldData), JSON.stringify(updated)]
+    [id, userId, 'update', JSON.stringify(oldDataForHistory), JSON.stringify(newDataForHistory)]
   );
 
   if (data.status && data.status !== oldData.status) {
