@@ -59,23 +59,32 @@ const getRecruiterPerformance = async () => {
 const getCompanyHiring = async () => {
   const result = await pool.query(`
     SELECT
-      cs.client_company AS company,
-      COUNT(*) AS submissions,
+      COALESCE(comp.company_name, cs.client_company) AS company,
       COUNT(DISTINCT iv.id) AS interviews,
-      COUNT(*) FILTER (WHERE cs.status IN ('offered', 'offer_accepted', 'joined')) AS offers,
-      COUNT(*) FILTER (WHERE cs.status = 'joined') AS joins
-    FROM candidate_submissions cs
-    LEFT JOIN interviews iv ON iv.submission_id = cs.id
-    GROUP BY cs.client_company
-    ORDER BY submissions DESC
+      COUNT(DISTINCT CASE WHEN iv.result IN ('cleared', 'selected') THEN iv.id END) AS offers,
+      COUNT(DISTINCT CASE
+        WHEN c.status IN ('deployed', 'joined', 'final_select', 'awaiting_verification') THEN c.id
+      END) AS joins,
+      COUNT(DISTINCT COALESCE(c.id::text, cs.candidate_id::text)) AS submissions
+    FROM interviews iv
+    LEFT JOIN companies comp ON comp.company_id = iv.company_id
+    LEFT JOIN candidate_submissions cs ON cs.id = iv.submission_id
+    LEFT JOIN candidates c
+      ON c.id = iv.candidate_id_uuid
+      OR c.id = cs.candidate_id
+    WHERE COALESCE(comp.company_name, cs.client_company) IS NOT NULL
+      AND COALESCE(comp.company_name, cs.client_company) != ''
+    GROUP BY COALESCE(comp.company_name, cs.client_company)
+    ORDER BY interviews DESC
+    LIMIT 10
   `);
 
   return result.rows.map((row) => ({
     company: row.company,
-    submissions: parseInt(row.submissions, 10),
-    interviews: parseInt(row.interviews, 10),
-    offers: parseInt(row.offers, 10),
-    joins: parseInt(row.joins, 10),
+    submissions: parseInt(row.submissions, 10) || 0,
+    interviews: parseInt(row.interviews, 10) || 0,
+    offers: parseInt(row.offers, 10) || 0,
+    joins: parseInt(row.joins, 10) || 0,
   }));
 };
 

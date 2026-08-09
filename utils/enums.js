@@ -22,6 +22,23 @@ const CANDIDATE_STATUSES = [
   'not_reachable',
   'follow_up',
   'archived',
+  // 16 Stage Pipeline
+  'awaiting_interview',
+  'awaiting_schedule',
+  'l1_scheduled',
+  'awaiting_result',
+  'l1_reject',
+  'l2_awaiting_schedule',
+  'l2_scheduled',
+  'l2_reject',
+  'l3_awaiting_schedule',
+  'l3_scheduled',
+  'l3_reject',
+  'final_select',
+  'candidate_declined',
+  'awaiting_verification',
+  'verification_reject',
+  'deployed',
 ];
 
 const INTERVIEW_RESULTS = [

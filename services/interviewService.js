@@ -59,6 +59,7 @@ const mapInterviewRow = (row) => ({
   offerStatus: row.offer_status || undefined,
   joiningDate: row.joining_date || undefined,
   recruiterNotes: row.recruiter_notes || undefined,
+  subStatus: row.sub_status || 'awaiting_invite',
   createdAt: row.created_at,
   updatedAt: row.updated_at,
 });
@@ -111,32 +112,103 @@ const getInterviewsByCandidate = async (candidateId) => {
 const updateCandidateStatus = async (candidateId) => {
   const current = await pool.query('SELECT status FROM candidates WHERE id = $1', [candidateId]);
   const currentStatus = current.rows[0]?.status;
-  if (!currentStatus || currentStatus === 'archived' || currentStatus === 'joined') return;
+  if (!currentStatus || currentStatus === 'deployed') return;
 
   const intRes = await pool.query(
-    `SELECT result, offer_status, joining_date
+    `SELECT result, offer_status, joining_date, interview_round, title, interview_date, sub_status
      FROM interviews
-     WHERE candidate_id_uuid = $1
-     ORDER BY created_at DESC`,
+     WHERE candidate_id_uuid = $1 OR candidate_id_int = (SELECT candidate_id_int FROM candidates WHERE id = $1)
+     ORDER BY created_at ASC`,
     [candidateId]
   );
 
-  if (intRes.rows.length === 0) return;
+  if (intRes.rows.length === 0) {
+    // Stage 1: Awaiting Interview
+    await pool.query("UPDATE candidates SET status = 'awaiting_interview' WHERE id = $1", [candidateId]);
+    return;
+  }
 
-  const latest = intRes.rows[0];
-  const mappedResult = mapInterviewResultFromDb(latest.result);
+  const STAGE_RANK = {
+    awaiting_interview: 1,
+    awaiting_schedule: 2,
+    l1_scheduled: 3,
+    awaiting_result: 4,
+    l1_reject: 5,
+    l2_awaiting_schedule: 6,
+    l2_scheduled: 7,
+    l2_reject: 8,
+    l3_awaiting_schedule: 9,
+    l3_scheduled: 10,
+    l3_reject: 11,
+    final_select: 12,
+    candidate_declined: 13,
+    awaiting_verification: 14,
+    verification_reject: 15,
+    deployed: 16,
+  };
 
-  let computedStatus = 'interview_scheduled';
-  if (latest.joining_date) {
-    computedStatus = 'joined';
-  } else if (latest.offer_status === 'accepted' || latest.offer_status === 'pending') {
-    computedStatus = 'offered';
-  } else if (mappedResult === 'rejected') {
-    computedStatus = 'rejected';
-  } else if (mappedResult === 'cleared') {
-    computedStatus = 'active';
-  } else {
-    computedStatus = 'interview_scheduled';
+  let computedStatus = 'awaiting_interview';
+  let highestRank = 1;
+  let hasOfferDeclined = false;
+  let hasOfferAccepted = false;
+
+  for (let i = 0; i < intRes.rows.length; i++) {
+    const iv = intRes.rows[i];
+    const roundStr = (iv.interview_round || iv.title || 'L1').toLowerCase();
+    const result = mapInterviewResultFromDb(iv.result);
+    
+    let roundLevel = 1;
+    if (roundStr.includes('l2') || roundStr.includes('round 2') || roundStr.includes('round2')) {
+      roundLevel = 2;
+    } else if (roundStr.includes('l3') || roundStr.includes('round 3') || roundStr.includes('round3') || roundStr.includes('manager') || roundStr.includes('hr')) {
+      roundLevel = 3;
+    }
+
+    const hasDateTime = iv.interview_date && String(iv.interview_date).trim() !== '';
+    let st = 'awaiting_interview';
+
+    if (!hasDateTime) {
+      st = roundLevel === 1 ? 'awaiting_schedule' : roundLevel === 2 ? 'l2_awaiting_schedule' : 'l3_awaiting_schedule';
+    } else if (result === 'pending' || iv.sub_status === 'hold') {
+      st = roundLevel === 1 ? 'l1_scheduled' : roundLevel === 2 ? 'l2_scheduled' : 'l3_scheduled';
+      if (iv.sub_status === 'interview_completed') {
+        st = 'awaiting_result';
+      }
+    } else if (result === 'rejected') {
+      st = roundLevel === 1 ? 'l1_reject' : roundLevel === 2 ? 'l2_reject' : 'l3_reject';
+    } else if (result === 'cleared') {
+      if (roundLevel === 1) {
+        st = 'l2_awaiting_schedule';
+      } else if (roundLevel === 2) {
+        st = 'l3_awaiting_schedule';
+      } else {
+        st = 'final_select';
+      }
+    }
+
+    const rank = STAGE_RANK[st] || 1;
+    if (rank > highestRank) {
+      highestRank = rank;
+      computedStatus = st;
+    }
+
+    if (iv.offer_status === 'declined') {
+      hasOfferDeclined = true;
+    } else if (iv.offer_status === 'accepted') {
+      hasOfferAccepted = true;
+    }
+  }
+
+  if (hasOfferDeclined) {
+    computedStatus = 'candidate_declined';
+  } else if (hasOfferAccepted) {
+    computedStatus = 'awaiting_verification';
+  }
+
+  if (currentStatus === 'verification_reject') {
+    computedStatus = 'verification_reject';
+  } else if (currentStatus === 'deployed') {
+    computedStatus = 'deployed';
   }
 
   await pool.query('UPDATE candidates SET status = $1 WHERE id = $2', [computedStatus, candidateId]);
@@ -161,26 +233,35 @@ const createInterview = async (data, userId) => {
   const dbMode = toDbMode(data.mode);
   const dbResult = mapInterviewResultToDb(data.result || 'pending');
 
+  const cleanTimestamp = (val) => {
+    if (!val || typeof val !== 'string' || val.trim() === '') return null;
+    return val.trim();
+  };
+
+  const rawDate = data.interviewDate || data.interview_date;
+  const rawJoining = data.joiningDate || data.joining_date;
+
   const insertResult = await pool.query(
     `INSERT INTO interviews (
       submission_id, company_id, branch_id, interview_date, interview_round, interview_mode,
       interview_feedback, result, offered_ctc, offer_status,
       joining_date, recruiter_notes,
       title, interview_time, interview_type, interviewer_name,
-      candidate_id_uuid, candidate_id_int, candidate_name, role, department
-    ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21) RETURNING *`,
+      candidate_id_uuid, candidate_id_int, candidate_name, role, department,
+      sub_status
+    ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22) RETURNING *`,
     [
       data.submissionId || null,
       data.companyId || data.company_id || null,
       data.branchId || data.branch_id || null,
-      data.interviewDate || data.interview_date,
+      cleanTimestamp(rawDate),
       data.round || data.title,
       dbMode,
       data.feedback || null,
       dbResult,
       data.offeredCTC || null,
       data.offerStatus || null,
-      data.joiningDate || null,
+      cleanTimestamp(rawJoining),
       data.notes || data.recruiterNotes || null,
       data.title || data.round,
       data.interview_time || null,
@@ -191,6 +272,7 @@ const createInterview = async (data, userId) => {
       data.candidate_name || null,
       data.role || null,
       data.department || null,
+      data.subStatus || data.sub_status || 'awaiting_invite',
     ]
   );
 
@@ -237,6 +319,11 @@ const updateInterview = async (id, data) => {
   const values = [];
   let index = 1;
 
+  const cleanTimestamp = (val) => {
+    if (!val || typeof val !== 'string' || val.trim() === '') return null;
+    return val.trim();
+  };
+
   const setField = (column, value) => {
     fields.push(`${column} = $${index}`);
     values.push(value);
@@ -245,15 +332,16 @@ const updateInterview = async (id, data) => {
 
   if (Object.prototype.hasOwnProperty.call(data, 'companyId') || Object.prototype.hasOwnProperty.call(data, 'company_id')) setField('company_id', data.companyId || data.company_id);
   if (Object.prototype.hasOwnProperty.call(data, 'branchId') || Object.prototype.hasOwnProperty.call(data, 'branch_id')) setField('branch_id', data.branchId || data.branch_id);
-  if (Object.prototype.hasOwnProperty.call(data, 'interviewDate')) setField('interview_date', data.interviewDate);
+  if (Object.prototype.hasOwnProperty.call(data, 'interviewDate') || Object.prototype.hasOwnProperty.call(data, 'interview_date')) setField('interview_date', cleanTimestamp(data.interviewDate !== undefined ? data.interviewDate : data.interview_date));
   if (Object.prototype.hasOwnProperty.call(data, 'round')) setField('interview_round', data.round);
   if (Object.prototype.hasOwnProperty.call(data, 'mode')) setField('interview_mode', toDbMode(data.mode));
   if (Object.prototype.hasOwnProperty.call(data, 'feedback')) setField('interview_feedback', data.feedback);
   if (Object.prototype.hasOwnProperty.call(data, 'result')) setField('result', mapInterviewResultToDb(data.result));
   if (Object.prototype.hasOwnProperty.call(data, 'offeredCTC')) setField('offered_ctc', data.offeredCTC);
   if (Object.prototype.hasOwnProperty.call(data, 'offerStatus')) setField('offer_status', data.offerStatus);
-  if (Object.prototype.hasOwnProperty.call(data, 'joiningDate')) setField('joining_date', data.joiningDate);
+  if (Object.prototype.hasOwnProperty.call(data, 'joiningDate')) setField('joining_date', cleanTimestamp(data.joiningDate));
   if (Object.prototype.hasOwnProperty.call(data, 'recruiterNotes')) setField('recruiter_notes', data.recruiterNotes);
+  if (Object.prototype.hasOwnProperty.call(data, 'subStatus') || Object.prototype.hasOwnProperty.call(data, 'sub_status')) setField('sub_status', data.subStatus || data.sub_status);
 
   if (fields.length === 0) return null;
 
