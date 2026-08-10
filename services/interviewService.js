@@ -131,20 +131,24 @@ const updateCandidateStatus = async (candidateId) => {
   const STAGE_RANK = {
     awaiting_interview: 1,
     awaiting_schedule: 2,
+    l1_awaiting_schedule: 2,
     l1_scheduled: 3,
     awaiting_result: 4,
+    l1_awaiting_result: 4,
     l1_reject: 5,
     l2_awaiting_schedule: 6,
     l2_scheduled: 7,
-    l2_reject: 8,
-    l3_awaiting_schedule: 9,
-    l3_scheduled: 10,
-    l3_reject: 11,
-    final_select: 12,
-    candidate_declined: 13,
-    awaiting_verification: 14,
-    verification_reject: 15,
-    deployed: 16,
+    l2_awaiting_result: 8,
+    l2_reject: 9,
+    l3_awaiting_schedule: 10,
+    l3_scheduled: 11,
+    l3_awaiting_result: 12,
+    l3_reject: 13,
+    final_select: 14,
+    candidate_declined: 15,
+    awaiting_verification: 16,
+    verification_reject: 17,
+    deployed: 18,
   };
 
   let computedStatus = 'awaiting_interview';
@@ -168,11 +172,12 @@ const updateCandidateStatus = async (candidateId) => {
     let st = 'awaiting_interview';
 
     if (!hasDateTime) {
-      st = roundLevel === 1 ? 'awaiting_schedule' : roundLevel === 2 ? 'l2_awaiting_schedule' : 'l3_awaiting_schedule';
+      st = roundLevel === 1 ? 'l1_awaiting_schedule' : roundLevel === 2 ? 'l2_awaiting_schedule' : 'l3_awaiting_schedule';
     } else if (result === 'pending' || iv.sub_status === 'hold') {
-      st = roundLevel === 1 ? 'l1_scheduled' : roundLevel === 2 ? 'l2_scheduled' : 'l3_scheduled';
       if (iv.sub_status === 'interview_completed') {
-        st = 'awaiting_result';
+        st = roundLevel === 1 ? 'l1_awaiting_result' : roundLevel === 2 ? 'l2_awaiting_result' : 'l3_awaiting_result';
+      } else {
+        st = roundLevel === 1 ? 'l1_scheduled' : roundLevel === 2 ? 'l2_scheduled' : 'l3_scheduled';
       }
     } else if (result === 'rejected') {
       st = roundLevel === 1 ? 'l1_reject' : roundLevel === 2 ? 'l2_reject' : 'l3_reject';
@@ -197,6 +202,11 @@ const updateCandidateStatus = async (candidateId) => {
     } else if (iv.offer_status === 'accepted') {
       hasOfferAccepted = true;
     }
+  }
+
+  if (currentStatus && STAGE_RANK[currentStatus] && STAGE_RANK[currentStatus] > highestRank) {
+    highestRank = STAGE_RANK[currentStatus];
+    computedStatus = currentStatus;
   }
 
   if (hasOfferDeclined) {
