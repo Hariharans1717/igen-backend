@@ -282,7 +282,41 @@ const getCandidateById = async (id) => {
     [id]
   );
 
-  return result.rows[0] ? mapCandidateRow(result.rows[0]) : null;
+  if (!result.rows[0]) return null;
+
+  const candidateObj = mapCandidateRow(result.rows[0]);
+
+  const pipelinesRes = await pool.query(
+    `SELECT
+       ccp.id AS pipeline_id,
+       ccp.company_id,
+       ccp.company_name,
+       ccp.branch_id,
+       b.branch_name,
+       ccp.interview_status,
+       ccp.sub_status,
+       ccp.status_updated_at,
+       ccp.updated_at
+     FROM candidate_company_pipeline ccp
+     LEFT JOIN branches b ON b.branch_id = ccp.branch_id
+     WHERE ccp.candidate_id = $1
+     ORDER BY ccp.created_at ASC`,
+    [id]
+  );
+
+  candidateObj.pipelines = pipelinesRes.rows.map(row => ({
+    pipeline_id: row.pipeline_id,
+    company_id: row.company_id || undefined,
+    company_name: row.company_name,
+    branch_id: row.branch_id || undefined,
+    branch_name: row.branch_name || undefined,
+    interview_status: mapCandidateStatusFromDb(row.interview_status),
+    sub_status: row.sub_status || undefined,
+    status_updated_at: row.status_updated_at,
+    updated_at: row.updated_at
+  }));
+
+  return candidateObj;
 };
 
 const createCandidate = async (data, userId) => {
@@ -598,12 +632,77 @@ const getCandidateHistory = async (candidateId) => {
   }));
 };
 
+const patchCandidateStatus = async (id, rawStatus, userId, companyIdentifier) => {
+  const status = mapCandidateStatusToDb(rawStatus);
+  let compName = typeof companyIdentifier === 'string' && companyIdentifier.trim() !== ''
+    ? companyIdentifier.trim()
+    : ((companyIdentifier && (companyIdentifier.company_name || companyIdentifier.companyName)) || 'Candidate Pipeline');
+  if (['freelancer', 'freelauncer', 'freelance', 'unemployed', 'student', 'none', 'n/a', 'general', 'main'].includes(compName.toLowerCase().trim())) {
+    compName = 'Candidate Pipeline';
+  }
+
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+
+    const currentRes = await client.query('SELECT * FROM candidates WHERE id = $1 AND status != \'inactive\'', [id]);
+    if (currentRes.rows.length === 0) {
+      await client.query('ROLLBACK');
+      return null;
+    }
+
+    const prevPipeline = await client.query(
+      'SELECT interview_status FROM candidate_company_pipeline WHERE candidate_id = $1 AND company_name = $2',
+      [id, compName]
+    );
+    const previousStatus = prevPipeline.rows[0]?.interview_status || currentRes.rows[0].status;
+
+    await client.query(
+      `INSERT INTO candidate_company_pipeline
+         (candidate_id, company_name, interview_status, status_updated_at, updated_at)
+       VALUES ($1, $2, $3, NOW(), NOW())
+       ON CONFLICT (candidate_id, company_name)
+       DO UPDATE SET
+         interview_status = EXCLUDED.interview_status,
+         status_updated_at = NOW(),
+         updated_at = NOW()`,
+      [id, compName, status]
+    );
+
+    await client.query(
+      `INSERT INTO candidate_status_history (candidate_id, company_name, previous_status, new_status, changed_by, changed_at)
+       VALUES ($1, $2, $3, $4, $5, NOW())`,
+      [id, compName, previousStatus, status, userId || null]
+    );
+
+    await client.query(
+      `INSERT INTO candidate_timeline (candidate_id, hr_user_id, action, note)
+       VALUES ($1, $2, $3, $4)`,
+      [id, userId || null, 'Pipeline Status Updated', `[${compName}] Status changed from ${previousStatus} to ${status}`]
+    );
+
+    await client.query(
+      `UPDATE candidates SET status = $1, updated_at = NOW() WHERE id = $2`,
+      [status, id]
+    );
+
+    await client.query('COMMIT');
+    return getCandidateById(id);
+  } catch (err) {
+    await client.query('ROLLBACK');
+    throw err;
+  } finally {
+    client.release();
+  }
+};
+
 module.exports = {
   listCandidates,
   getCandidateById,
   createCandidate,
   updateCandidate,
   setCandidateStatus,
+  patchCandidateStatus,
   softDeleteCandidate,
   checkDuplicate,
   getCandidateHistory,

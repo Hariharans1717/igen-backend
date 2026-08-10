@@ -110,23 +110,20 @@ const getInterviewsByCandidate = async (candidateId) => {
 };
 
 const updateCandidateStatus = async (candidateId) => {
-  const current = await pool.query('SELECT status FROM candidates WHERE id = $1', [candidateId]);
+  const current = await pool.query('SELECT status, current_company FROM candidates WHERE id = $1', [candidateId]);
   const currentStatus = current.rows[0]?.status;
   if (!currentStatus || currentStatus === 'deployed') return;
 
   const intRes = await pool.query(
-    `SELECT result, offer_status, joining_date, interview_round, title, interview_date, sub_status
-     FROM interviews
-     WHERE candidate_id_uuid = $1 OR candidate_id_int = (SELECT candidate_id_int FROM candidates WHERE id = $1)
-     ORDER BY created_at ASC`,
+    `SELECT iv.result, iv.offer_status, iv.joining_date, iv.interview_round, iv.title, iv.interview_date, iv.sub_status,
+            COALESCE(NULLIF(co.company_name, ''), c.current_company, 'General') AS comp_name
+     FROM interviews iv
+     JOIN candidates c ON c.id = $1
+     LEFT JOIN companies co ON co.company_id = iv.company_id
+     WHERE iv.candidate_id_uuid = $1
+     ORDER BY iv.created_at ASC`,
     [candidateId]
   );
-
-  if (intRes.rows.length === 0) {
-    // Stage 1: Awaiting Interview
-    await pool.query("UPDATE candidates SET status = 'awaiting_interview' WHERE id = $1", [candidateId]);
-    return;
-  }
 
   const STAGE_RANK = {
     awaiting_interview: 1,
@@ -151,77 +148,104 @@ const updateCandidateStatus = async (candidateId) => {
     deployed: 18,
   };
 
-  let computedStatus = 'awaiting_interview';
-  let highestRank = 1;
-  let hasOfferDeclined = false;
-  let hasOfferAccepted = false;
-
+  const INVALID_NAMES = ['freelancer', 'freelauncer', 'freelance', 'unemployed', 'student', 'none', 'n/a', 'general', 'main'];
+  const companyInterviews = {};
   for (let i = 0; i < intRes.rows.length; i++) {
     const iv = intRes.rows[i];
-    const roundStr = (iv.interview_round || iv.title || 'L1').toLowerCase();
-    const result = mapInterviewResultFromDb(iv.result);
-    
-    let roundLevel = 1;
-    if (roundStr.includes('l2') || roundStr.includes('round 2') || roundStr.includes('round2')) {
-      roundLevel = 2;
-    } else if (roundStr.includes('l3') || roundStr.includes('round 3') || roundStr.includes('round3') || roundStr.includes('manager') || roundStr.includes('hr')) {
-      roundLevel = 3;
-    }
+    let compName = (iv.comp_name || 'Candidate Pipeline').trim();
+    if (INVALID_NAMES.includes(compName.toLowerCase())) compName = 'Candidate Pipeline';
+    if (!companyInterviews[compName]) companyInterviews[compName] = [];
+    companyInterviews[compName].push(iv);
+  }
 
-    const hasDateTime = iv.interview_date && String(iv.interview_date).trim() !== '';
-    let st = 'awaiting_interview';
+  let globalHighestRank = 1;
+  let globalComputedStatus = 'awaiting_interview';
 
-    if (!hasDateTime) {
-      st = roundLevel === 1 ? 'l1_awaiting_schedule' : roundLevel === 2 ? 'l2_awaiting_schedule' : 'l3_awaiting_schedule';
-    } else if (result === 'pending' || iv.sub_status === 'hold') {
-      if (iv.sub_status === 'interview_completed') {
-        st = roundLevel === 1 ? 'l1_awaiting_result' : roundLevel === 2 ? 'l2_awaiting_result' : 'l3_awaiting_result';
-      } else {
-        st = roundLevel === 1 ? 'l1_scheduled' : roundLevel === 2 ? 'l2_scheduled' : 'l3_scheduled';
+  const companyNames = Object.keys(companyInterviews);
+  if (companyNames.length === 0) {
+    let fallbackComp = (current.rows[0]?.current_company || 'Candidate Pipeline').trim();
+    if (INVALID_NAMES.includes(fallbackComp.toLowerCase())) fallbackComp = 'Candidate Pipeline';
+    companyNames.push(fallbackComp);
+    companyInterviews[fallbackComp] = [];
+  }
+
+  for (const compName of companyNames) {
+    const ivs = companyInterviews[compName] || [];
+    let compHighestRank = 1;
+    let compStatus = 'awaiting_interview';
+
+    for (const iv of ivs) {
+      const roundStr = (iv.interview_round || iv.title || 'L1').toLowerCase();
+      const result = mapInterviewResultFromDb(iv.result);
+
+      let roundLevel = 1;
+      if (roundStr.includes('l2') || roundStr.includes('round 2') || roundStr.includes('round2')) {
+        roundLevel = 2;
+      } else if (roundStr.includes('l3') || roundStr.includes('round 3') || roundStr.includes('round3') || roundStr.includes('manager') || roundStr.includes('hr')) {
+        roundLevel = 3;
       }
-    } else if (result === 'rejected') {
-      st = roundLevel === 1 ? 'l1_reject' : roundLevel === 2 ? 'l2_reject' : 'l3_reject';
-    } else if (result === 'cleared') {
-      if (roundLevel === 1) {
-        st = 'l2_awaiting_schedule';
-      } else if (roundLevel === 2) {
-        st = 'l3_awaiting_schedule';
-      } else {
-        st = 'final_select';
+
+      const hasDateTime = iv.interview_date && String(iv.interview_date).trim() !== '';
+      let st = 'awaiting_interview';
+
+      if (!hasDateTime) {
+        st = roundLevel === 1 ? 'l1_awaiting_schedule' : roundLevel === 2 ? 'l2_awaiting_schedule' : 'l3_awaiting_schedule';
+      } else if (result === 'pending' || iv.sub_status === 'hold') {
+        if (iv.sub_status === 'interview_completed') {
+          st = roundLevel === 1 ? 'l1_awaiting_result' : roundLevel === 2 ? 'l2_awaiting_result' : 'l3_awaiting_result';
+        } else {
+          st = roundLevel === 1 ? 'l1_scheduled' : roundLevel === 2 ? 'l2_scheduled' : 'l3_scheduled';
+        }
+      } else if (result === 'rejected') {
+        st = roundLevel === 1 ? 'l1_reject' : roundLevel === 2 ? 'l2_reject' : 'l3_reject';
+      } else if (result === 'cleared') {
+        if (roundLevel === 1) {
+          st = 'l2_awaiting_schedule';
+        } else if (roundLevel === 2) {
+          st = 'l3_awaiting_schedule';
+        } else {
+          st = 'final_select';
+        }
+      }
+
+      const rank = STAGE_RANK[st] || 1;
+      if (rank > compHighestRank) {
+        compHighestRank = rank;
+        compStatus = st;
       }
     }
 
-    const rank = STAGE_RANK[st] || 1;
-    if (rank > highestRank) {
-      highestRank = rank;
-      computedStatus = st;
+    const existingPipe = await pool.query(
+      'SELECT interview_status FROM candidate_company_pipeline WHERE candidate_id = $1 AND company_name = $2',
+      [candidateId, compName]
+    );
+    if (existingPipe.rows[0]?.interview_status) {
+      const existingRank = STAGE_RANK[existingPipe.rows[0].interview_status] || 1;
+      if (existingRank > compHighestRank) {
+        compHighestRank = existingRank;
+        compStatus = existingPipe.rows[0].interview_status;
+      }
     }
 
-    if (iv.offer_status === 'declined') {
-      hasOfferDeclined = true;
-    } else if (iv.offer_status === 'accepted') {
-      hasOfferAccepted = true;
+    await pool.query(
+      `INSERT INTO candidate_company_pipeline (candidate_id, company_name, interview_status, status_updated_at, updated_at)
+       VALUES ($1, $2, $3, NOW(), NOW())
+       ON CONFLICT (candidate_id, company_name)
+       DO UPDATE SET interview_status = EXCLUDED.interview_status, status_updated_at = NOW(), updated_at = NOW()`,
+      [candidateId, compName, compStatus]
+    );
+
+    if (compHighestRank > globalHighestRank) {
+      globalHighestRank = compHighestRank;
+      globalComputedStatus = compStatus;
     }
   }
 
-  if (currentStatus && STAGE_RANK[currentStatus] && STAGE_RANK[currentStatus] > highestRank) {
-    highestRank = STAGE_RANK[currentStatus];
-    computedStatus = currentStatus;
+  if (currentStatus && STAGE_RANK[currentStatus] && STAGE_RANK[currentStatus] > globalHighestRank) {
+    globalComputedStatus = currentStatus;
   }
 
-  if (hasOfferDeclined) {
-    computedStatus = 'candidate_declined';
-  } else if (hasOfferAccepted) {
-    computedStatus = 'awaiting_verification';
-  }
-
-  if (currentStatus === 'verification_reject') {
-    computedStatus = 'verification_reject';
-  } else if (currentStatus === 'deployed') {
-    computedStatus = 'deployed';
-  }
-
-  await pool.query('UPDATE candidates SET status = $1 WHERE id = $2', [computedStatus, candidateId]);
+  await pool.query('UPDATE candidates SET status = $1 WHERE id = $2', [globalComputedStatus, candidateId]);
 };
 
 const updateSubmissionFromInterview = async () => {

@@ -9,6 +9,8 @@ const listCandidates = async (req, res) => {
 const getCandidate = async (req, res) => {
   const candidate = await candidateService.getCandidateById(req.params.id);
   if (!candidate) return res.status(404).json({ error: 'Candidate not found.' });
+  res.set('Cache-Control', 'no-store, no-cache, must-revalidate');
+  res.set('Pragma', 'no-cache');
   return res.json(candidate);
 };
 
@@ -54,13 +56,14 @@ const checkDuplicate = async (req, res) => {
 
 const updateStatus = async (req, res) => {
   const { id } = req.params;
-  const { status } = req.body;
+  const status = req.body.interview_status || req.body.status;
+  const companyIdentifier = req.body.company_name || req.body.companyName || req.body.company_id || req.body.companyId;
   if (!status) {
-    return res.status(400).json({ error: 'Status is required.' });
+    return res.status(400).json({ error: 'Status or interview_status is required.' });
   }
-  const candidate = await candidateService.updateCandidate(id, { status }, req.user?.id);
+  const candidate = await candidateService.patchCandidateStatus(id, status, req.user?.id, companyIdentifier);
   if (!candidate) return res.status(404).json({ error: 'Candidate not found.' });
-  return res.json({ success: true, candidate });
+  return res.json({ success: true, candidate, pipeline: candidate.pipelines });
 };
 
 const getCandidateHistory = async (req, res) => {
