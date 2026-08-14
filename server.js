@@ -2,8 +2,22 @@
 // iGEN Talent Acquisition — Backend Server
 // Trigger Render Deployment: Companies & Candidate Schema
 // =========================================
+const fs = require('fs');
 const path = require('path');
-require('dotenv').config({ path: path.resolve(__dirname, '.env') });
+
+const envCandidates = [
+  path.resolve(__dirname, '.env'),
+  path.resolve(__dirname, '../I-GEN/.env'),
+  path.resolve(__dirname, '../.env'),
+];
+
+for (const envPath of envCandidates) {
+  if (fs.existsSync(envPath)) {
+    require('dotenv').config({ path: envPath });
+    console.log(`📄 Loaded environment variables from ${path.relative(process.cwd(), envPath)}`);
+    break;
+  }
+}
 
 const express = require('express');
 const cors = require('cors');
