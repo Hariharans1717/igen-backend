@@ -1,5 +1,6 @@
 const pool = require('../config/db');
 const { mapInterviewResultToDb, mapInterviewResultFromDb } = require('../utils/mappers');
+const { toProperCase } = require('../utils/stringUtils');
 
 const INTERVIEW_SELECT = `
   SELECT iv.*,
@@ -39,19 +40,19 @@ const mapInterviewRow = (row) => ({
   companyId: row.company_id || undefined,
   branchId: row.branch_id || undefined,
   candidateId: row.candidate_id || '',
-  candidateName: row.candidate_name || '',
-  companyName: row.company_name || '',
-  branchName: row.branch_name || '',
-  branchCity: row.branch_city || '',
+  candidateName: toProperCase(row.candidate_name) || '',
+  companyName: toProperCase(row.company_name) || '',
+  branchName: toProperCase(row.branch_name) || '',
+  branchCity: toProperCase(row.branch_city) || '',
   resumeSubmissionDate: row.resume_submission_date || '',
   interviewDate: row.interview_date,
   interviewTime: row.interview_time || '',
-  round: row.title || row.interview_round,
+  round: toProperCase(row.title || row.interview_round),
   interviewType: row.interview_type,
-  interviewerName: row.interviewer_name,
+  interviewerName: toProperCase(row.interviewer_name),
   notes: row.recruiter_notes || row.interview_feedback,
-  role: row.role,
-  department: row.department,
+  role: toProperCase(row.role),
+  department: toProperCase(row.department),
   mode: fromDbMode(row.interview_mode),
   feedback: row.interview_feedback || undefined,
   result: mapInterviewResultFromDb(row.result),
@@ -264,6 +265,13 @@ const derivePipelineStatus = ({ result, offerStatus, joiningDate, offeredCTC }) 
 };
 
 const createInterview = async (data, userId) => {
+  if (data.title) data.title = toProperCase(data.title);
+  if (data.round) data.round = toProperCase(data.round);
+  if (data.interviewer_name) data.interviewer_name = toProperCase(data.interviewer_name);
+  if (data.role) data.role = toProperCase(data.role);
+  if (data.department) data.department = toProperCase(data.department);
+  if (data.candidate_name) data.candidate_name = toProperCase(data.candidate_name);
+
   const dbMode = toDbMode(data.mode);
   const dbResult = mapInterviewResultToDb(data.result || 'pending');
 
@@ -367,7 +375,12 @@ const updateInterview = async (id, data) => {
   if (Object.prototype.hasOwnProperty.call(data, 'companyId') || Object.prototype.hasOwnProperty.call(data, 'company_id')) setField('company_id', data.companyId || data.company_id);
   if (Object.prototype.hasOwnProperty.call(data, 'branchId') || Object.prototype.hasOwnProperty.call(data, 'branch_id')) setField('branch_id', data.branchId || data.branch_id);
   if (Object.prototype.hasOwnProperty.call(data, 'interviewDate') || Object.prototype.hasOwnProperty.call(data, 'interview_date')) setField('interview_date', cleanTimestamp(data.interviewDate !== undefined ? data.interviewDate : data.interview_date));
-  if (Object.prototype.hasOwnProperty.call(data, 'round')) setField('interview_round', data.round);
+  if (Object.prototype.hasOwnProperty.call(data, 'round')) setField('interview_round', data.round ? toProperCase(data.round) : null);
+  if (Object.prototype.hasOwnProperty.call(data, 'title')) setField('title', data.title ? toProperCase(data.title) : null);
+  if (Object.prototype.hasOwnProperty.call(data, 'interviewer_name')) setField('interviewer_name', data.interviewer_name ? toProperCase(data.interviewer_name) : null);
+  if (Object.prototype.hasOwnProperty.call(data, 'role')) setField('role', data.role ? toProperCase(data.role) : null);
+  if (Object.prototype.hasOwnProperty.call(data, 'department')) setField('department', data.department ? toProperCase(data.department) : null);
+  if (Object.prototype.hasOwnProperty.call(data, 'candidate_name')) setField('candidate_name', data.candidate_name ? toProperCase(data.candidate_name) : null);
   if (Object.prototype.hasOwnProperty.call(data, 'mode')) setField('interview_mode', toDbMode(data.mode));
   if (Object.prototype.hasOwnProperty.call(data, 'feedback')) setField('interview_feedback', data.feedback);
   if (Object.prototype.hasOwnProperty.call(data, 'result')) setField('result', mapInterviewResultToDb(data.result));

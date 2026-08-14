@@ -8,6 +8,11 @@ const sslConfig = useSSL
   ? { rejectUnauthorized: process.env.DB_SSL_REJECT_UNAUTHORIZED !== 'false' }
   : false;
 
+const hasDbConfig = Boolean(
+  process.env.DATABASE_URL ||
+  (process.env.DB_HOST && process.env.DB_NAME && process.env.DB_USER)
+);
+
 const pool = new Pool({
   connectionString: process.env.DATABASE_URL || undefined,
   host: process.env.DATABASE_URL ? undefined : process.env.DB_HOST,
@@ -23,22 +28,26 @@ const pool = new Pool({
 
 // Log pool connection details
 console.log('🗄️ PostgreSQL Connection Config:');
-console.log('   Host:', process.env.DB_HOST);
-console.log('   Port:', process.env.DB_PORT);
-console.log('   Database:', process.env.DB_NAME);
-console.log('   User:', process.env.DB_USER);
+console.log('   Host:', process.env.DB_HOST || 'not configured');
+console.log('   Port:', process.env.DB_PORT || 'not configured');
+console.log('   Database:', process.env.DB_NAME || 'not configured');
+console.log('   User:', process.env.DB_USER || 'not configured');
 console.log('   Max connections:', 20);
 console.log('   Connection timeout:', '30s');
 
-// Test connection
-pool.query('SELECT NOW();', (err, result) => {
-  if (err) {
-    console.error('❌ PostgreSQL connection test failed:', err.message);
-  } else {
-    console.log('✅ PostgreSQL connection successful');
-    console.log('   Server time:', result.rows[0].now);
-  }
-});
+if (!hasDbConfig) {
+  console.warn('⚠️ PostgreSQL is not configured yet. Set DATABASE_URL or DB_HOST/DB_NAME/DB_USER before using database-backed routes.');
+} else {
+  // Test connection
+  pool.query('SELECT NOW();', (err, result) => {
+    if (err) {
+      console.error('❌ PostgreSQL connection test failed:', err.message);
+    } else {
+      console.log('✅ PostgreSQL connection successful');
+      console.log('   Server time:', result.rows[0].now);
+    }
+  });
+}
 
 // Log pool connection errors
 pool.on('error', (err) => {
