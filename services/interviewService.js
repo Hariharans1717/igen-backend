@@ -179,9 +179,9 @@ const updateCandidateStatus = async (candidateId) => {
       const result = mapInterviewResultFromDb(iv.result);
 
       let roundLevel = 1;
-      if (roundStr.includes('l2') || roundStr.includes('round 2') || roundStr.includes('round2')) {
+      if (roundStr.includes('l2') || roundStr.includes('round 2') || roundStr.includes('round2') || roundStr.includes('technical')) {
         roundLevel = 2;
-      } else if (roundStr.includes('l3') || roundStr.includes('round 3') || roundStr.includes('round3') || roundStr.includes('manager') || roundStr.includes('hr')) {
+      } else if (roundStr.includes('l3') || roundStr.includes('round 3') || roundStr.includes('round3') || roundStr.includes('manager') || roundStr.includes('final')) {
         roundLevel = 3;
       }
 
