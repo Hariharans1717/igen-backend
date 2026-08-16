@@ -14,5 +14,6 @@ router.get('/kpis', asyncHandler(dashboardController.getKPIs));
 router.get('/recruiter-performance', asyncHandler(dashboardController.getRecruiterPerformance));
 router.get('/company-hiring', asyncHandler(dashboardController.getCompanyHiring));
 router.get('/monthly-trends', asyncHandler(dashboardController.getMonthlyTrends));
+router.get('/today-interviews', asyncHandler(dashboardController.getTodaysInterviews));
 
 module.exports = router;

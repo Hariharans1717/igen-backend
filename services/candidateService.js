@@ -64,6 +64,10 @@ const mapCandidateRow = (row) => ({
   photoUrl: row.photo_url || undefined,
   resumeUrl: row.resume_url || undefined,
   resumeFilename: row.resume_filename || undefined,
+  passportNumber: row.passport_number || undefined,
+  passportExpiryDate: row.passport_expiry_date ? formatLocalDate(row.passport_expiry_date) : undefined,
+  lwd: row.lwd ? formatLocalDate(row.lwd) : undefined,
+  priority: row.priority || false,
 });
 
 const buildUpdate = (data) => {
@@ -97,6 +101,10 @@ const buildUpdate = (data) => {
     noticePeriod: 'notice_period',
     currentLocation: 'current_location',
     remarks: 'remarks',
+    passportNumber: 'passport_number',
+    passportExpiryDate: 'passport_expiry_date',
+    lwd: 'lwd',
+    priority: 'priority',
   };
 
   const keys = Object.keys(fieldMap).filter((key) => Object.prototype.hasOwnProperty.call(data, key));
@@ -249,7 +257,8 @@ const listCandidates = async ({
     createdAt: 'created_at',
   };
   const sortField = allowedSortFields[sortBy] || 'created_at';
-  const order = sortOrder === 'desc' ? 'DESC' : 'ASC';
+  let order = sortOrder === 'asc' ? 'ASC' : 'DESC';
+  if (!sortBy && !sortOrder) order = 'DESC'; // ensure default created_at order is DESC
 
   const countResult = await pool.query(
     `SELECT COUNT(*) FROM candidates c ${whereSQL}`,
@@ -288,6 +297,21 @@ const getCandidateById = async (id) => {
   if (!result.rows[0]) return null;
 
   const candidateObj = mapCandidateRow(result.rows[0]);
+
+  const salaryRes = await pool.query(
+    `SELECT current_ctc, current_currency, expected_ctc, expected_currency, location
+     FROM candidate_salary
+     WHERE candidate_id = $1`,
+    [id]
+  );
+  
+  candidateObj.ectcEntries = salaryRes.rows.map(row => ({
+    currentCTC: row.current_ctc ? parseFloat(row.current_ctc) : undefined,
+    currentCurrency: row.current_currency,
+    expectedCTC: row.expected_ctc ? parseFloat(row.expected_ctc) : undefined,
+    expectedCurrency: row.expected_currency,
+    location: row.location || undefined
+  }));
 
   const pipelinesRes = await pool.query(
     `SELECT
@@ -334,25 +358,6 @@ const createCandidate = async (data, userId) => {
   if (data.tags) data.tags = toProperCaseArray(data.tags);
   if (data.panNumber) data.panNumber = toUpperCase(data.panNumber);
 
-  // Ensure candidateCode is present for folder naming (e.g. HAR1001)
-  const candidateCode = data.candidateCode && data.candidateCode.trim() 
-    ? data.candidateCode.trim() 
-    : `CAN${Math.floor(1000 + Math.random() * 9000)}`;
-  data.candidateCode = candidateCode;
-
-  // Upload files to Google Drive using Candidate Name and Candidate Code (ID)
-  const uploadResult = await googleDriveService.uploadCandidateFiles(
-    data.name,
-    candidateCode,
-    data.photoUrl,
-    data.resumeUrl,
-    data.resumeFilename
-  );
-
-  const finalPhotoUrl = uploadResult.photoUrl;
-  const finalResumeUrl = uploadResult.resumeUrl;
-  const finalResumeFilename = uploadResult.resumeFilename;
-
   const employmentStatus = normalizeEmploymentStatus(data.employmentStatus);
   const status = mapCandidateStatusToDb(data.status || 'new');
   
@@ -368,16 +373,41 @@ const createCandidate = async (data, userId) => {
   console.log('🔍 Existing candidate check - Found:', existing.rows.length > 0);
   if (existing.rows.length > 0) {
     console.log('📋 Existing candidate:', JSON.stringify(existing.rows[0], null, 2));
-  }
-
-  let candidate;
-
-  if (existing.rows.length > 0) {
     const existingCandidate = existing.rows[0];
     if (existingCandidate.status !== 'inactive') {
       console.error('❌ Duplicate detected - active candidate with same email/mobile');
       throw new Error('A candidate with this email or mobile already exists and is active.');
     }
+  }
+
+  // Generate sequential Candidate Code if not provided
+  let candidateCode = data.candidateCode;
+  if (!candidateCode || !candidateCode.trim()) {
+    const seqRes = await pool.query("SELECT nextval('candidate_id_seq') as seq");
+    const seq = parseInt(seqRes.rows[0].seq, 10);
+    const numeric = String(seq);
+    const formattedNumber = ('0' + numeric).padStart(4, '0');
+    candidateCode = 'IG' + formattedNumber;
+    data.candidateCode = candidateCode;
+  }
+
+  // Upload files to Google Drive using Candidate Name and Candidate Code (ID)
+  const uploadResult = await googleDriveService.uploadCandidateFiles(
+    data.name,
+    candidateCode,
+    data.photoUrl,
+    data.resumeUrl,
+    data.resumeFilename
+  );
+
+  const finalPhotoUrl = uploadResult.photoUrl;
+  const finalResumeUrl = uploadResult.resumeUrl;
+  const finalResumeFilename = uploadResult.resumeFilename;
+
+  let candidate;
+
+  if (existing.rows.length > 0) {
+    const existingCandidate = existing.rows[0];
     
     console.log('♻️ Restoring inactive candidate:', existingCandidate.id);
     
@@ -465,18 +495,17 @@ const createCandidate = async (data, userId) => {
       );
     }
 
-    await pool.query(
-      `INSERT INTO candidate_salary (candidate_id, current_ctc, current_currency, expected_ctc, expected_currency, expected_hike_percent)
-       VALUES ($1, $2, $3, $4, $5, $6)
-       ON CONFLICT (candidate_id) DO UPDATE SET
-         current_ctc = EXCLUDED.current_ctc,
-         current_currency = EXCLUDED.current_currency,
-         expected_ctc = EXCLUDED.expected_ctc,
-         expected_currency = EXCLUDED.expected_currency,
-         expected_hike_percent = EXCLUDED.expected_hike_percent,
-         last_updated = NOW()`,
-      [candidate.id, data.currentCTC || null, data.currentCurrency || 'INR', data.expectedCTC, data.expectedCurrency || 'INR', data.expectedHikePercent != null ? data.expectedHikePercent : null]
-    );
+    const ectcEntries = data.ectcEntries && data.ectcEntries.length > 0 
+      ? data.ectcEntries 
+      : [{ expectedCTC: data.expectedCTC, expectedCurrency: data.expectedCurrency || 'INR', location: data.preferredLocation || null }];
+
+    for (const ectc of ectcEntries) {
+      await pool.query(
+        `INSERT INTO candidate_salary (candidate_id, current_ctc, current_currency, expected_ctc, expected_currency, location, expected_hike_percent)
+         VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+        [candidate.id, data.currentCTC || null, data.currentCurrency || 'INR', ectc.expectedCTC || data.expectedCTC, ectc.expectedCurrency || 'INR', ectc.location || null, data.expectedHikePercent != null ? data.expectedHikePercent : null]
+      );
+    }
   } catch (subErr) {
     console.error('Warning inserting secondary candidate records:', subErr.message);
   }
@@ -575,6 +604,22 @@ const updateCandidate = async (id, data, userId) => {
        VALUES ($1, $2, $3, $4)`,
       [id, userId, 'Status Updated', `Status changed to ${data.status}`]
     );
+  }
+
+  // Update candidate_salary entries
+  if (data.ectcEntries && data.ectcEntries.length > 0) {
+    try {
+      await pool.query('DELETE FROM candidate_salary WHERE candidate_id = $1', [id]);
+      for (const ectc of data.ectcEntries) {
+        await pool.query(
+          `INSERT INTO candidate_salary (candidate_id, current_ctc, current_currency, expected_ctc, expected_currency, location, expected_hike_percent)
+           VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+          [id, data.currentCTC || null, data.currentCurrency || 'INR', ectc.expectedCTC || data.expectedCTC, ectc.expectedCurrency || 'INR', ectc.location || null, data.expectedHikePercent != null ? data.expectedHikePercent : null]
+        );
+      }
+    } catch (err) {
+      console.error('Error updating candidate_salary entries:', err.message);
+    }
   }
 
   return mapCandidateRow(updated);
@@ -721,6 +766,18 @@ const patchCandidateStatus = async (id, rawStatus, userId, companyIdentifier) =>
   }
 };
 
+const getNextCandidateCode = async () => {
+  const res = await pool.query("SELECT last_value, is_called FROM candidate_id_seq");
+  const { last_value, is_called } = res.rows[0];
+  let seq = parseInt(last_value, 10);
+  if (is_called) {
+    seq += 1;
+  }
+  const numeric = String(seq);
+  const formattedNumber = ('0' + numeric).padStart(4, '0');
+  return 'IG' + formattedNumber;
+};
+
 module.exports = {
   listCandidates,
   getCandidateById,
@@ -731,4 +788,5 @@ module.exports = {
   softDeleteCandidate,
   checkDuplicate,
   getCandidateHistory,
+  getNextCandidateCode,
 };

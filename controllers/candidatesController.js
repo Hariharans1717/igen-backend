@@ -27,9 +27,12 @@ const createCandidate = async (req, res) => {
     
     return res.status(201).json(candidate);
   } catch (error) {
+    if (error.message && error.message.includes('already exists')) {
+      return res.status(400).json({ error: error.message });
+    }
     console.error('❌ [createCandidate] Error:', error.message);
     console.error('🔍 Stack:', error.stack);
-    throw error;
+    return res.status(500).json({ error: error.message || 'Internal Server Error' });
   }
 };
 
@@ -71,6 +74,11 @@ const getCandidateHistory = async (req, res) => {
   return res.json(history);
 };
 
+const getNextCandidateCode = async (req, res) => {
+  const code = await candidateService.getNextCandidateCode();
+  return res.json({ candidateCode: code });
+};
+
 module.exports = {
   listCandidates,
   getCandidate,
@@ -80,4 +88,5 @@ module.exports = {
   checkDuplicate,
   getCandidateHistory,
   updateStatus,
+  getNextCandidateCode,
 };

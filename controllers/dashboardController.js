@@ -20,9 +20,15 @@ const getMonthlyTrends = async (req, res) => {
   return res.json(data);
 };
 
+const getTodaysInterviews = async (req, res) => {
+  const data = await dashboardService.getTodaysInterviews();
+  return res.json(data);
+};
+
 module.exports = {
   getKPIs,
   getRecruiterPerformance,
   getCompanyHiring,
   getMonthlyTrends,
+  getTodaysInterviews,
 };
