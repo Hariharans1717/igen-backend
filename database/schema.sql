@@ -94,6 +94,9 @@ CREATE TABLE hr_users (
 );
 
 -- 3. Candidate Management Module
+
+CREATE SEQUENCE IF NOT EXISTS candidate_id_seq START WITH 1;
+
 CREATE TABLE candidates (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     name VARCHAR(100) NOT NULL,
