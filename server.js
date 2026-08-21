@@ -148,20 +148,14 @@ const printStartupBanner = (port) => {
   `);
 };
 
-const startServer = (port, retriesLeft = 5) => {
+const startServer = (port) => {
   const server = app.listen(port, () => {
     printStartupBanner(port);
   });
 
   server.on('error', (err) => {
-    if (err.code === 'EADDRINUSE' && retriesLeft > 0) {
-      const nextPort = port + 1;
-      console.warn(`⚠️ Port ${port} is in use. Retrying on port ${nextPort}...`);
-      return startServer(nextPort, retriesLeft - 1);
-    }
-
     if (err.code === 'EADDRINUSE') {
-      console.error(`❌ Could not start server: ports ${BASE_PORT}-${BASE_PORT + 5} are in use.`);
+      console.error(`❌ Port ${port} is already in use. Free it and restart — the server will not fall back to another port.`);
       process.exit(1);
     }
 

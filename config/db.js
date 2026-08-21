@@ -35,19 +35,25 @@ console.log('   User:', process.env.DB_USER || 'not configured');
 console.log('   Max connections:', 20);
 console.log('   Connection timeout:', '30s');
 
-if (!hasDbConfig) {
-  console.warn('⚠️ PostgreSQL is not configured yet. Set DATABASE_URL or DB_HOST/DB_NAME/DB_USER before using database-backed routes.');
-} else {
-  // Test connection
-  pool.query('SELECT NOW();', (err, result) => {
-    if (err) {
-      console.error('❌ PostgreSQL connection test failed:', err.message);
-    } else {
-      console.log('✅ PostgreSQL connection successful');
-      console.log('   Server time:', result.rows[0].now);
-    }
-  });
-}
+// Explicit startup connection check. Awaited from server.js so the server
+// only reports itself as "running" once we know whether the DB is actually
+// reachable — the real error is always logged, never swallowed.
+const verifyConnection = async () => {
+  if (!hasDbConfig) {
+    console.warn('⚠️ PostgreSQL is not configured yet. Set DATABASE_URL or DB_HOST/DB_NAME/DB_USER before using database-backed routes.');
+    return false;
+  }
+  try {
+    const result = await pool.query('SELECT NOW();');
+    console.log('Database connected successfully');
+    console.log('   Server time:', result.rows[0].now);
+    return true;
+  } catch (err) {
+    console.error('❌ Database connection failed:', err.message);
+    console.error(err.stack);
+    return false;
+  }
+};
 
 // Log pool connection errors
 pool.on('error', (err) => {
@@ -56,3 +62,4 @@ pool.on('error', (err) => {
 });
 
 module.exports = pool;
+module.exports.verifyConnection = verifyConnection;

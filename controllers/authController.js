@@ -82,10 +82,6 @@ const login = async (req, res) => {
   const { email, password } = req.validated.body;
   const normalizedEmail = (email || '').trim().toLowerCase();
 
-  if (normalizedEmail === DEMO_ADMIN_EMAIL && password === DEMO_ADMIN_PASSWORD) {
-    return createDemoAuthResponse(res);
-  }
-
   try {
     const actualEmail = email === 'priya@igen.i' ? 'priya@igen.in' : email;
     const user = await getUserByEmail(actualEmail);

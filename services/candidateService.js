@@ -51,7 +51,7 @@ const mapCandidateRow = (row) => ({
   preferredLocation: toProperCase(row.preferred_location),
   skills: toProperCaseArray(row.skills) || [],
   keySkills: toProperCaseArray(row.key_skills) || [],
-  tags: toProperCaseArray(row.tags) || [],
+  tags: Array.isArray(row.tags) ? Array.from(new Set(row.tags)) : [],
   status: row.is_archived ? 'archived' : mapCandidateStatusFromDb(row.status),
   isDeleted: row.status === 'inactive',
   isArchived: row.is_archived || false,
@@ -353,10 +353,16 @@ const createCandidate = async (data, userId) => {
   if (data.department) data.department = toProperCase(data.department);
   if (data.preferredLocation) data.preferredLocation = toProperCase(data.preferredLocation);
   if (data.currentLocation) data.currentLocation = toProperCase(data.currentLocation);
-  if (data.skills) data.skills = toProperCaseArray(data.skills);
+  data.skills = data.skills ? toProperCaseArray(data.skills) : [];
   if (data.keySkills) data.keySkills = toProperCaseArray(data.keySkills);
-  if (data.tags) data.tags = toProperCaseArray(data.tags);
+  if (data.tags) data.tags = Array.from(new Set(data.tags));
   if (data.panNumber) data.panNumber = toUpperCase(data.panNumber);
+
+  if (data.expectedCTC === '') data.expectedCTC = null;
+  if (data.currentCTC === '') data.currentCTC = null;
+  if (data.experience === '') data.experience = null;
+  if (data.expectedHikePercent === '') data.expectedHikePercent = null;
+
 
   const employmentStatus = normalizeEmploymentStatus(data.employmentStatus);
   const status = mapCandidateStatusToDb(data.status || 'new');
@@ -424,8 +430,8 @@ const createCandidate = async (data, userId) => {
         photo_url=$14, resume_url=$15, resume_filename=$16,
         aadhaar_number=$17, aadhaar_last4=$18, pan_number=$19, current_currency=$20, expected_currency=$21,
         department=$22, notice_period=$23, current_location=$24, remarks=$25,
-        candidate_code=$26, dob=$27, expected_hike_percent=$28, key_skills=$29
-       WHERE id=$30 RETURNING *`,
+        candidate_code=$26, dob=$27, expected_hike_percent=$28, key_skills=$29, tags=$30
+       WHERE id=$31 RETURNING *`,
       [
         data.name, data.email, data.mobile, employmentStatus, data.expectedCTC, data.preferredLocation,
         data.skills, data.currentCompany || null, data.currentDesignation || null, data.currentCTC || null, data.experience || null,
@@ -434,6 +440,7 @@ const createCandidate = async (data, userId) => {
         data.department || null, data.noticePeriod || null, data.currentLocation || null, data.remarks || null,
         data.candidateCode || null, data.dob || null, data.expectedHikePercent != null ? data.expectedHikePercent : null,
         data.keySkills || [],
+        data.tags || [],
         existingCandidate.id
       ]
     );
@@ -458,8 +465,8 @@ const createCandidate = async (data, userId) => {
         skills, current_company, current_designation, current_ctc, experience_years,
         status, created_by, photo_url, resume_url, resume_filename,
         aadhaar_number, aadhaar_last4, pan_number, current_currency, expected_currency,
-        department, notice_period, current_location, remarks, candidate_code, dob, expected_hike_percent, key_skills
-      ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27,$28,$29) RETURNING *`,
+        department, notice_period, current_location, remarks, candidate_code, dob, expected_hike_percent, key_skills, tags
+      ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27,$28,$29,$30) RETURNING *`,
       [
         data.name, data.email, data.mobile, employmentStatus, data.expectedCTC, data.preferredLocation,
         data.skills, data.currentCompany || null, data.currentDesignation || null, data.currentCTC || null, data.experience || null,
@@ -467,7 +474,8 @@ const createCandidate = async (data, userId) => {
         data.aadhaarNumber || null, aadhaarLast4, data.panNumber ? data.panNumber.toUpperCase() : null, currentCurrency, expectedCurrency,
         data.department || null, data.noticePeriod || null, data.currentLocation || null, data.remarks || null,
         data.candidateCode || null, data.dob || null, data.expectedHikePercent != null ? data.expectedHikePercent : null,
-        data.keySkills || []
+        data.keySkills || [],
+        data.tags || []
       ]
     );
     
@@ -524,6 +532,12 @@ const updateCandidate = async (id, data, userId) => {
   if (existing.rows.length === 0) return null;
 
   const updatePayload = { ...data };
+  
+  if (updatePayload.expectedCTC === '') updatePayload.expectedCTC = null;
+  if (updatePayload.currentCTC === '') updatePayload.currentCTC = null;
+  if (updatePayload.experience === '') updatePayload.experience = null;
+  if (updatePayload.expectedHikePercent === '') updatePayload.expectedHikePercent = null;
+
   if (updatePayload.name) updatePayload.name = toProperCase(updatePayload.name);
   if (updatePayload.currentCompany) updatePayload.currentCompany = toProperCase(updatePayload.currentCompany);
   if (updatePayload.currentDesignation) updatePayload.currentDesignation = toProperCase(updatePayload.currentDesignation);
@@ -531,7 +545,7 @@ const updateCandidate = async (id, data, userId) => {
   if (updatePayload.preferredLocation) updatePayload.preferredLocation = toProperCase(updatePayload.preferredLocation);
   if (updatePayload.currentLocation) updatePayload.currentLocation = toProperCase(updatePayload.currentLocation);
   if (updatePayload.skills) updatePayload.skills = toProperCaseArray(updatePayload.skills);
-  if (updatePayload.tags) updatePayload.tags = toProperCaseArray(updatePayload.tags);
+  if (updatePayload.tags) updatePayload.tags = Array.from(new Set(updatePayload.tags));
   if (updatePayload.panNumber) updatePayload.panNumber = toUpperCase(updatePayload.panNumber);
   if (Object.prototype.hasOwnProperty.call(data, 'employmentStatus')) {
     updatePayload.employmentStatus = normalizeEmploymentStatus(data.employmentStatus);
