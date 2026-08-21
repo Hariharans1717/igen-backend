@@ -1,0 +1,1 @@
+require('dotenv').config(); const pool = require('./config/db'); pool.query("SELECT data_type, udt_name FROM information_schema.columns WHERE table_name = 'interviews' AND column_name = 'result';").then(r => console.log(r.rows)).catch(console.error).finally(() => process.exit(0));
