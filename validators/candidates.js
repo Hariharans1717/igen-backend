@@ -2,6 +2,19 @@ const { z } = require('zod');
 const { CANDIDATE_STATUSES, EMPLOYMENT_STATUSES } = require('../utils/enums');
 const { paginationSchema } = require('./common');
 
+const validateAgeAbove18 = (val) => {
+  if (!val) return true; // optional/nullable is allowed
+  const birthDate = new Date(val);
+  if (isNaN(birthDate.getTime())) return false; // invalid date not allowed
+  const today = new Date();
+  let age = today.getFullYear() - birthDate.getFullYear();
+  const monthDiff = today.getMonth() - birthDate.getMonth();
+  if (monthDiff < 0 || (monthDiff === 0 && today.getDate() < birthDate.getDate())) {
+    age--;
+  }
+  return age >= 18;
+};
+
 const candidateCreateSchema = z.object({
   body: z.object({
     name: z.string().trim().min(1),
@@ -29,7 +42,9 @@ const candidateCreateSchema = z.object({
     aadhaarLast4: z.string().trim().optional().nullable(),
     panNumber: z.string().trim().optional().nullable(),
     candidateCode: z.string().trim().optional().nullable(),
-    dob: z.string().trim().optional().nullable(),
+    dob: z.string().trim().optional().nullable().refine(validateAgeAbove18, {
+      message: 'Candidate must be 18 years or older',
+    }),
     expectedHikePercent: z.coerce.number().min(0).max(1000).optional().nullable(),
     noticePeriod: z.string().trim().optional().nullable(),
     currentLocation: z.string().trim().optional().nullable(),
@@ -65,7 +80,9 @@ const candidateUpdateSchema = z.object({
     aadhaarLast4: z.string().trim().optional().nullable(),
     panNumber: z.string().trim().optional().nullable(),
     candidateCode: z.string().trim().optional().nullable(),
-    dob: z.string().trim().optional().nullable(),
+    dob: z.string().trim().optional().nullable().refine(validateAgeAbove18, {
+      message: 'Candidate must be 18 years or older',
+    }),
     expectedHikePercent: z.coerce.number().min(0).max(1000).optional().nullable(),
     noticePeriod: z.string().trim().optional().nullable(),
     currentLocation: z.string().trim().optional().nullable(),
