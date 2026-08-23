@@ -391,10 +391,27 @@ const createCandidate = async (data, userId) => {
   if (!candidateCode || !candidateCode.trim()) {
     const seqRes = await pool.query("SELECT nextval('candidate_id_seq') as seq");
     const seq = parseInt(seqRes.rows[0].seq, 10);
-    const numeric = String(seq);
-    const formattedNumber = ('0' + numeric).padStart(4, '0');
+    const formattedNumber = String(seq).padStart(4, '0');
     candidateCode = 'IG' + formattedNumber;
     data.candidateCode = candidateCode;
+  } else {
+    // If the candidateCode is provided, check if it follows the sequential format and sync sequence if needed
+    const codeTrim = candidateCode.trim();
+    if (codeTrim.startsWith('IG')) {
+      const numPart = codeTrim.slice(2);
+      if (/^\d+$/.test(numPart)) {
+        const numVal = parseInt(numPart, 10);
+        try {
+          const seqRes = await pool.query("SELECT last_value FROM candidate_id_seq");
+          const lastValue = parseInt(seqRes.rows[0].last_value, 10);
+          if (numVal >= lastValue) {
+            await pool.query("SELECT setval('candidate_id_seq', $1, true)", [numVal]);
+          }
+        } catch (seqErr) {
+          console.error('Failed to sync candidate_id_seq sequence:', seqErr);
+        }
+      }
+    }
   }
 
   // Upload files to Google Drive using Candidate Name and Candidate Code (ID)
@@ -430,8 +447,8 @@ const createCandidate = async (data, userId) => {
         photo_url=$14, resume_url=$15, resume_filename=$16,
         aadhaar_number=$17, aadhaar_last4=$18, pan_number=$19, current_currency=$20, expected_currency=$21,
         department=$22, notice_period=$23, current_location=$24, remarks=$25,
-        candidate_code=$26, dob=$27, expected_hike_percent=$28, key_skills=$29, tags=$30
-       WHERE id=$31 RETURNING *`,
+        candidate_code=$26, dob=$27, expected_hike_percent=$28, key_skills=$29, tags=$30, priority=$31
+       WHERE id=$32 RETURNING *`,
       [
         data.name, data.email, data.mobile, employmentStatus, data.expectedCTC, data.preferredLocation,
         data.skills, data.currentCompany || null, data.currentDesignation || null, data.currentCTC || null, data.experience || null,
@@ -441,6 +458,7 @@ const createCandidate = async (data, userId) => {
         data.candidateCode || null, data.dob || null, data.expectedHikePercent != null ? data.expectedHikePercent : null,
         data.keySkills || [],
         data.tags || [],
+        data.priority || false,
         existingCandidate.id
       ]
     );
@@ -465,8 +483,8 @@ const createCandidate = async (data, userId) => {
         skills, current_company, current_designation, current_ctc, experience_years,
         status, created_by, photo_url, resume_url, resume_filename,
         aadhaar_number, aadhaar_last4, pan_number, current_currency, expected_currency,
-        department, notice_period, current_location, remarks, candidate_code, dob, expected_hike_percent, key_skills, tags
-      ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27,$28,$29,$30) RETURNING *`,
+        department, notice_period, current_location, remarks, candidate_code, dob, expected_hike_percent, key_skills, tags, priority
+      ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27,$28,$29,$30,$31) RETURNING *`,
       [
         data.name, data.email, data.mobile, employmentStatus, data.expectedCTC, data.preferredLocation,
         data.skills, data.currentCompany || null, data.currentDesignation || null, data.currentCTC || null, data.experience || null,
@@ -475,7 +493,8 @@ const createCandidate = async (data, userId) => {
         data.department || null, data.noticePeriod || null, data.currentLocation || null, data.remarks || null,
         data.candidateCode || null, data.dob || null, data.expectedHikePercent != null ? data.expectedHikePercent : null,
         data.keySkills || [],
-        data.tags || []
+        data.tags || [],
+        data.priority || false
       ]
     );
     
@@ -787,8 +806,7 @@ const getNextCandidateCode = async () => {
   if (is_called) {
     seq += 1;
   }
-  const numeric = String(seq);
-  const formattedNumber = ('0' + numeric).padStart(4, '0');
+  const formattedNumber = String(seq).padStart(4, '0');
   return 'IG' + formattedNumber;
 };
 

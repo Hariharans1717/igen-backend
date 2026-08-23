@@ -34,6 +34,7 @@ const candidateCreateSchema = z.object({
     noticePeriod: z.string().trim().optional().nullable(),
     currentLocation: z.string().trim().optional().nullable(),
     remarks: z.string().trim().optional().nullable(),
+    priority: z.boolean().optional(),
   }),
 });
 
@@ -74,6 +75,7 @@ const candidateUpdateSchema = z.object({
     isFlagged: z.boolean().optional(),
     isKey: z.boolean().optional(),
     isHot: z.boolean().optional(),
+    priority: z.boolean().optional(),
     createdBy: z.string().optional().nullable(),
   }),
 });
