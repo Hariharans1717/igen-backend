@@ -50,6 +50,8 @@ const candidateCreateSchema = z.object({
     currentLocation: z.string().trim().optional().nullable(),
     remarks: z.string().trim().optional().nullable(),
     priority: z.boolean().optional(),
+    passportNumber: z.string().trim().optional().nullable(),
+    passportExpiryDate: z.string().trim().optional().nullable(),
   }),
 });
 
@@ -94,6 +96,8 @@ const candidateUpdateSchema = z.object({
     isHot: z.boolean().optional(),
     priority: z.boolean().optional(),
     createdBy: z.string().optional().nullable(),
+    passportNumber: z.string().trim().optional().nullable(),
+    passportExpiryDate: z.string().trim().optional().nullable(),
   }),
 });
 
