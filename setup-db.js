@@ -12,13 +12,16 @@ const { Pool } = require('pg');
 const bcrypt = require('bcrypt');
 require('dotenv').config({ path: path.resolve(__dirname, '.env') });
 
+const useSSL = process.env.DB_SSL === 'true' || Boolean(process.env.DATABASE_URL) || (process.env.DB_HOST && process.env.DB_HOST.includes('render.com'));
+
 const pool = new Pool({
-  host: process.env.DB_HOST,
-  port: parseInt(process.env.DB_PORT, 10) || 5432,
-  database: process.env.DB_NAME,
-  user: process.env.DB_USER,
-  password: process.env.DB_PASSWORD,
-  ssl: process.env.DB_SSL === 'true' ? { rejectUnauthorized: false } : false,
+  connectionString: process.env.DATABASE_URL || undefined,
+  host: process.env.DATABASE_URL ? undefined : process.env.DB_HOST,
+  port: process.env.DATABASE_URL ? undefined : (parseInt(process.env.DB_PORT, 10) || 5432),
+  database: process.env.DATABASE_URL ? undefined : process.env.DB_NAME,
+  user: process.env.DATABASE_URL ? undefined : process.env.DB_USER,
+  password: process.env.DATABASE_URL ? undefined : process.env.DB_PASSWORD,
+  ssl: useSSL ? { rejectUnauthorized: false } : false,
 });
 
 async function run() {
