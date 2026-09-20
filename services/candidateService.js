@@ -694,21 +694,26 @@ const checkDuplicate = async ({ email, mobile, excludeId }) => {
   let mobileExists = false;
   let candidate = null;
 
-  if (email) {
+  const cleanEmail = typeof email === 'string' ? email.trim().toLowerCase() : '';
+  const cleanMobile = typeof mobile === 'string' ? mobile.trim() : '';
+  const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+  const validExcludeId = (excludeId && UUID_REGEX.test(String(excludeId))) ? String(excludeId) : null;
+
+  if (cleanEmail) {
     const result = await pool.query(
-      "SELECT * FROM candidates WHERE email = $1 AND status != 'inactive'" +
-      (excludeId ? ' AND id != $2' : ''),
-      excludeId ? [email, excludeId] : [email]
+      "SELECT * FROM candidates WHERE LOWER(email) = $1 AND status != 'inactive'" +
+      (validExcludeId ? ' AND id != $2' : ''),
+      validExcludeId ? [cleanEmail, validExcludeId] : [cleanEmail]
     );
     emailExists = result.rows.length > 0;
     if (emailExists) candidate = mapCandidateRow(result.rows[0]);
   }
 
-  if (mobile) {
+  if (cleanMobile) {
     const result = await pool.query(
       "SELECT * FROM candidates WHERE mobile = $1 AND status != 'inactive'" +
-      (excludeId ? ' AND id != $2' : ''),
-      excludeId ? [mobile, excludeId] : [mobile]
+      (validExcludeId ? ' AND id != $2' : ''),
+      validExcludeId ? [cleanMobile, validExcludeId] : [cleanMobile]
     );
     mobileExists = result.rows.length > 0;
     if (mobileExists && !candidate) candidate = mapCandidateRow(result.rows[0]);

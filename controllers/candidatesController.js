@@ -50,10 +50,12 @@ const deleteCandidate = async (req, res) => {
 
 const checkDuplicate = async (req, res) => {
   const { email, mobile, excludeId } = req.validated.body;
-  if (!email && !mobile) {
-    return res.status(400).json({ error: 'Email or mobile is required.' });
+  const cleanEmail = (email || '').trim();
+  const cleanMobile = (mobile || '').trim();
+  if (!cleanEmail && !cleanMobile) {
+    return res.json({ emailExists: false, mobileExists: false });
   }
-  const result = await candidateService.checkDuplicate({ email, mobile, excludeId });
+  const result = await candidateService.checkDuplicate({ email: cleanEmail, mobile: cleanMobile, excludeId });
   return res.json(result);
 };
 

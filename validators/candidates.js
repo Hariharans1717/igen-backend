@@ -121,9 +121,9 @@ const candidateListSchema = z.object({
 
 const candidateDuplicateSchema = z.object({
   body: z.object({
-    email: z.string().email().optional(),
-    mobile: z.string().trim().min(5).optional(),
-    excludeId: z.string().uuid().optional(),
+    email: z.string().trim().optional().nullable(),
+    mobile: z.string().trim().optional().nullable(),
+    excludeId: z.string().trim().optional().nullable(),
   }),
 });
 
