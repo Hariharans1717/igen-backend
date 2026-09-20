@@ -8,6 +8,7 @@ const {
 } = require('../utils/mappers');
 const { serializeHistoryData } = require('../utils/historyUtils');
 const { toProperCase, toUpperCase, toProperCaseArray } = require('../utils/stringUtils');
+const { resolveValidHrUserId } = require('../utils/userHelper');
 
 const formatLocalDate = (value) => {
   if (!(value instanceof Date)) return String(value).slice(0, 10);
@@ -347,6 +348,7 @@ const getCandidateById = async (id) => {
 };
 
 const createCandidate = async (data, userId) => {
+  const validUserId = await resolveValidHrUserId(userId);
   if (data.name) data.name = toProperCase(data.name);
   if (data.currentCompany) data.currentCompany = toProperCase(data.currentCompany);
   if (data.currentDesignation) data.currentDesignation = toProperCase(data.currentDesignation);
@@ -452,7 +454,7 @@ const createCandidate = async (data, userId) => {
       [
         data.name, data.email, data.mobile, employmentStatus, data.expectedCTC, data.preferredLocation,
         data.skills, data.currentCompany || null, data.currentDesignation || null, data.currentCTC || null, data.experience || null,
-        status, userId, finalPhotoUrl || null, finalResumeUrl || null, finalResumeFilename || null,
+        status, validUserId, finalPhotoUrl || null, finalResumeUrl || null, finalResumeFilename || null,
         data.aadhaarNumber || null, aadhaarLast4, data.panNumber ? data.panNumber.toUpperCase() : null, currentCurrency, expectedCurrency,
         data.department || null, data.noticePeriod || null, data.currentLocation || null, data.remarks || null,
         data.candidateCode || null, data.dob || null, data.expectedHikePercent != null ? data.expectedHikePercent : null,
@@ -469,7 +471,7 @@ const createCandidate = async (data, userId) => {
     await pool.query(
       `INSERT INTO candidate_timeline (candidate_id, hr_user_id, action, note)
        VALUES ($1, $2, $3, $4)`,
-      [candidate.id, userId, 'Candidate Restored', `Profile restored and updated for ${candidate.name}`]
+      [candidate.id, validUserId, 'Candidate Restored', `Profile restored and updated for ${candidate.name}`]
     );
   } else {
     console.log('➕ Creating new candidate');
@@ -488,7 +490,7 @@ const createCandidate = async (data, userId) => {
       [
         data.name, data.email, data.mobile, employmentStatus, data.expectedCTC, data.preferredLocation,
         data.skills, data.currentCompany || null, data.currentDesignation || null, data.currentCTC || null, data.experience || null,
-        status, userId, finalPhotoUrl || null, finalResumeUrl || null, finalResumeFilename || null,
+        status, validUserId, finalPhotoUrl || null, finalResumeUrl || null, finalResumeFilename || null,
         data.aadhaarNumber || null, aadhaarLast4, data.panNumber ? data.panNumber.toUpperCase() : null, currentCurrency, expectedCurrency,
         data.department || null, data.noticePeriod || null, data.currentLocation || null, data.remarks || null,
         data.candidateCode || null, data.dob || null, data.expectedHikePercent != null ? data.expectedHikePercent : null,
@@ -504,7 +506,7 @@ const createCandidate = async (data, userId) => {
     await pool.query(
       `INSERT INTO candidate_timeline (candidate_id, hr_user_id, action, note)
        VALUES ($1, $2, $3, $4)`,
-      [candidate.id, userId, 'Candidate Created', `Profile created for ${candidate.name}`]
+      [candidate.id, validUserId, 'Candidate Created', `Profile created for ${candidate.name}`]
     );
   }
 
@@ -544,6 +546,7 @@ const createCandidate = async (data, userId) => {
 };
 
 const updateCandidate = async (id, data, userId) => {
+  const validUserId = await resolveValidHrUserId(userId);
   const existing = await pool.query(
     "SELECT * FROM candidates WHERE id = $1 AND status != 'inactive'",
     [id]
@@ -618,7 +621,7 @@ const updateCandidate = async (id, data, userId) => {
   await pool.query(
     `INSERT INTO candidate_timeline (candidate_id, hr_user_id, action, note)
      VALUES ($1, $2, $3, $4)`,
-    [id, userId, 'Profile Updated', 'Candidate profile updated']
+    [id, validUserId, 'Profile Updated', 'Candidate profile updated']
   );
 
   const oldData = existing.rows[0];
@@ -628,14 +631,14 @@ const updateCandidate = async (id, data, userId) => {
   await pool.query(
     `INSERT INTO candidate_history (candidate_id, changed_by, change_type, old_data, new_data)
      VALUES ($1, $2, $3, $4, $5)`,
-    [id, userId, 'update', JSON.stringify(oldDataForHistory), JSON.stringify(newDataForHistory)]
+    [id, validUserId, 'update', JSON.stringify(oldDataForHistory), JSON.stringify(newDataForHistory)]
   );
 
   if (data.status && data.status !== oldData.status) {
     await pool.query(
       `INSERT INTO candidate_timeline (candidate_id, hr_user_id, action, note)
        VALUES ($1, $2, $3, $4)`,
-      [id, userId, 'Status Updated', `Status changed to ${data.status}`]
+      [id, validUserId, 'Status Updated', `Status changed to ${data.status}`]
     );
   }
 
@@ -669,6 +672,7 @@ const setCandidateStatus = async (id, status) => {
 };
 
 const softDeleteCandidate = async (id, userId) => {
+  const validUserId = await resolveValidHrUserId(userId);
   const result = await pool.query(
     "UPDATE candidates SET status = 'inactive' WHERE id = $1 AND status != 'inactive' RETURNING id",
     [id]
@@ -679,7 +683,7 @@ const softDeleteCandidate = async (id, userId) => {
   await pool.query(
     `INSERT INTO candidate_timeline (candidate_id, hr_user_id, action, note)
      VALUES ($1, $2, $3, $4)`,
-    [id, userId, 'Candidate Deleted', 'Candidate profile soft-deleted']
+    [id, validUserId, 'Candidate Deleted', 'Candidate profile soft-deleted']
   );
 
   return true;
@@ -736,6 +740,7 @@ const getCandidateHistory = async (candidateId) => {
 };
 
 const patchCandidateStatus = async (id, rawStatus, userId, companyIdentifier) => {
+  const validUserId = await resolveValidHrUserId(userId);
   const status = mapCandidateStatusToDb(rawStatus);
   let compName = typeof companyIdentifier === 'string' && companyIdentifier.trim() !== ''
     ? companyIdentifier.trim()
@@ -775,13 +780,13 @@ const patchCandidateStatus = async (id, rawStatus, userId, companyIdentifier) =>
     await client.query(
       `INSERT INTO candidate_status_history (candidate_id, company_name, previous_status, new_status, changed_by, changed_at)
        VALUES ($1, $2, $3, $4, $5, NOW())`,
-      [id, compName, previousStatus, status, userId || null]
+      [id, compName, previousStatus, status, validUserId || null]
     );
 
     await client.query(
       `INSERT INTO candidate_timeline (candidate_id, hr_user_id, action, note)
        VALUES ($1, $2, $3, $4)`,
-      [id, userId || null, 'Pipeline Status Updated', `[${compName}] Status changed from ${previousStatus} to ${status}`]
+      [id, validUserId || null, 'Pipeline Status Updated', `[${compName}] Status changed from ${previousStatus} to ${status}`]
     );
 
     await client.query(

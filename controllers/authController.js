@@ -18,11 +18,12 @@ const {
   getRefreshTokenExpiry,
 } = require('../utils/tokens');
 
+const DEMO_ADMIN_ID = '00000000-0000-0000-0000-000000000001';
 const DEMO_ADMIN_EMAIL = 'priya@igen.in';
 const DEMO_ADMIN_PASSWORD = 'igen@2025';
 
 const buildDemoUser = () => ({
-  id: 1,
+  id: DEMO_ADMIN_ID,
   first_name: 'Priya',
   last_name: 'Admin',
   email: DEMO_ADMIN_EMAIL,
@@ -32,12 +33,12 @@ const buildDemoUser = () => ({
 });
 
 const createDemoAuthResponse = (res) => {
-  const token = createAccessToken({ id: 1, email: DEMO_ADMIN_EMAIL, role: 'admin' });
+  const token = createAccessToken({ id: DEMO_ADMIN_ID, email: DEMO_ADMIN_EMAIL, role: 'admin' });
   const refreshToken = generateRefreshToken();
 
   return res.json({
     user: {
-      id: 1,
+      id: DEMO_ADMIN_ID,
       name: 'Priya Admin',
       email: DEMO_ADMIN_EMAIL,
       role: 'admin',

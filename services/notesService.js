@@ -1,5 +1,6 @@
 const pool = require('../config/db');
 const { uploadNoteAttachment } = require('./googleDriveService');
+const { resolveValidHrUserId } = require('../utils/userHelper');
 
 const mapNoteRow = (row) => ({
   id: row.id,
@@ -55,6 +56,7 @@ const getNotesByCandidate = async (candidateId) => {
 };
 
 const createNote = async ({ candidateId, content, title, category, priority, status, tags, attachmentDataUrl, attachmentName }, userId) => {
+  const validUserId = await resolveValidHrUserId(userId);
   const noteTitle = title || 'Note';
   const noteCategory = category || 'personal_note';
   const notePriority = priority || 'medium';
@@ -91,7 +93,7 @@ const createNote = async ({ candidateId, content, title, category, priority, sta
   const result = await pool.query(
     `INSERT INTO candidate_notes (candidate_id, hr_user_id, title, note_text, category, priority, status, tags, attachment_url, attachment_name)
      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10) RETURNING *`,
-    [candidateId, userId, noteTitle, content, noteCategory, notePriority, noteStatus, noteTags, finalAttachmentUrl, finalAttachmentName]
+    [candidateId, validUserId, noteTitle, content, noteCategory, notePriority, noteStatus, noteTags, finalAttachmentUrl, finalAttachmentName]
   );
 
   const enriched = await pool.query(
@@ -108,13 +110,14 @@ const createNote = async ({ candidateId, content, title, category, priority, sta
   await pool.query(
     `INSERT INTO candidate_timeline (candidate_id, hr_user_id, action, note)
      VALUES ($1, $2, $3, $4)`,
-    [candidateId, userId, `Note Added (${noteCategory.replace(/_/g, ' ')})`, content]
+    [candidateId, validUserId, `Note Added (${noteCategory.replace(/_/g, ' ')})`, content]
   );
 
   return noteData;
 };
 
 const updateNote = async (id, content, title, userId, category, priority, status, changeReason, attachmentDataUrl, attachmentName) => {
+  const validUserId = await resolveValidHrUserId(userId);
   const noteResult = await pool.query('SELECT * FROM candidate_notes WHERE id = $1', [id]);
   if (noteResult.rows.length === 0) return { error: 'not_found' };
 
@@ -123,22 +126,16 @@ const updateNote = async (id, content, title, userId, category, priority, status
   // If content changed, record previous version in note_edit_history
   if (content && content.trim() !== note.note_text.trim()) {
     const historyRes = await pool.query('SELECT COUNT(*)::int AS count FROM note_edit_history WHERE note_id = $1', [id]);
-    const version = (historyRes.rows[0]?.count || 0) + 1;
-
-    // Get user name if available
-    let editorName = 'You';
-    if (userId) {
-      const uRes = await pool.query("SELECT CONCAT(first_name, ' ', last_name) AS name FROM hr_users WHERE id = $1", [userId]);
-      if (uRes.rows[0]?.name) editorName = uRes.rows[0].name;
-    }
+    const nextVersion = (historyRes.rows[0]?.count || 0) + 1;
 
     await pool.query(
       `INSERT INTO note_edit_history (note_id, version, previous_content, edited_by, change_reason)
        VALUES ($1, $2, $3, $4, $5)`,
-      [id, version, note.note_text, editorName, changeReason || null]
+      [id, nextVersion, note.note_text, 'You', changeReason || null]
     );
   }
 
+  // Handle new attachment upload if provided
   let finalAttachmentUrl = note.attachment_url;
   let finalAttachmentName = note.attachment_name;
 
@@ -149,15 +146,14 @@ const updateNote = async (id, content, title, userId, category, priority, status
       const candName = cand ? cand.name : 'Candidate';
       const candCodeOrMobile = cand ? (cand.candidate_code || cand.mobile || 'Unknown') : 'Attachment';
 
-      const notesRes = await pool.query('SELECT id FROM candidate_notes WHERE candidate_id = $1 ORDER BY created_at ASC', [note.candidate_id]);
-      let noteIndex = notesRes.rows.findIndex(n => n.id === id) + 1;
-      if (noteIndex <= 0) noteIndex = notesRes.rows.length || 1;
+      const historyRes = await pool.query('SELECT COUNT(*)::int AS count FROM note_edit_history WHERE note_id = $1', [id]);
+      const ver = (historyRes.rows[0]?.count || 0) + 1;
 
       let ext = 'pdf';
       if (attachmentName && attachmentName.includes('.')) {
         ext = attachmentName.split('.').pop().toLowerCase();
       }
-      const formattedFileName = `${candName.trim().replace(/\s+/g, '_')}_note_${noteIndex}.${ext}`;
+      const formattedFileName = `${candName.trim().replace(/\s+/g, '_')}_note_${id.slice(0, 4)}_v${ver}.${ext}`;
 
       const driveRes = await uploadNoteAttachment(candName, candCodeOrMobile, attachmentDataUrl, formattedFileName);
       finalAttachmentUrl = driveRes.attachmentUrl || finalAttachmentUrl;
@@ -183,7 +179,7 @@ const updateNote = async (id, content, title, userId, category, priority, status
   await pool.query(
     `INSERT INTO candidate_timeline (candidate_id, hr_user_id, action, note)
      VALUES ($1, $2, $3, $4)`,
-    [note.candidate_id, userId, `Note Updated (${noteCategory.replace(/_/g, ' ')})`, noteContent]
+    [note.candidate_id, validUserId, `Note Updated (${noteCategory.replace(/_/g, ' ')})`, noteContent]
   );
 
   const updatedNotes = await getNotesByCandidate(note.candidate_id);
@@ -193,6 +189,7 @@ const updateNote = async (id, content, title, userId, category, priority, status
 };
 
 const deleteNote = async (id, userId) => {
+  const validUserId = await resolveValidHrUserId(userId);
   const noteResult = await pool.query('SELECT * FROM candidate_notes WHERE id = $1', [id]);
   if (noteResult.rows.length === 0) return false;
   const note = noteResult.rows[0];
@@ -202,7 +199,7 @@ const deleteNote = async (id, userId) => {
   await pool.query(
     `INSERT INTO candidate_timeline (candidate_id, hr_user_id, action, note)
      VALUES ($1, $2, $3, $4)`,
-    [note.candidate_id, userId, 'Note Deleted', `Note "${note.title}" was deleted.`]
+    [note.candidate_id, validUserId, 'Note Deleted', `Note "${note.title}" was deleted.`]
   );
 
   return true;

@@ -1,6 +1,7 @@
 const pool = require('../config/db');
 const { mapInterviewResultToDb, mapInterviewResultFromDb } = require('../utils/mappers');
 const { toProperCase } = require('../utils/stringUtils');
+const { resolveValidHrUserId } = require('../utils/userHelper');
 
 const INTERVIEW_SELECT = `
   SELECT iv.*,
@@ -340,12 +341,13 @@ const createInterview = async (data, userId) => {
 
   if (interview.candidate_id) {
     await updateCandidateStatus(interview.candidate_id);
+    const validUserId = await resolveValidHrUserId(userId);
     await pool.query(
       `INSERT INTO candidate_timeline (candidate_id, hr_user_id, action, note, related_company)
        VALUES ($1, $2, $3, $4, $5)`,
       [
         interview.candidate_id,
-        userId,
+        validUserId,
         `${data.round} at ${interview.company_name}`,
         'Interview scheduled',
         interview.company_name,
