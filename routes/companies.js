@@ -19,6 +19,7 @@ const optionalAuth = (req, res, next) => {
 };
 
 router.get('/', companiesController.listCompanies);
+router.get('/:id/interviews', companiesController.checkCompanyInterviews);
 router.get('/:id', companiesController.getCompanyById);
 
 router.post('/', optionalAuth, companiesController.createCompany);

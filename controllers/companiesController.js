@@ -91,6 +91,15 @@ const deleteBranch = async (req, res, next) => {
   }
 };
 
+const checkCompanyInterviews = async (req, res, next) => {
+  try {
+    const hasInterviews = await companyService.hasAssignedInterviews(req.params.id);
+    return res.json({ hasInterviews });
+  } catch (err) {
+    next(err);
+  }
+};
+
 module.exports = {
   listCompanies,
   getCompanyById,
@@ -100,5 +109,6 @@ module.exports = {
   deleteCompany,
   updateBranch,
   deleteBranch,
+  checkCompanyInterviews,
 };
 

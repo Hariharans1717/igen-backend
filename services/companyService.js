@@ -265,7 +265,45 @@ const updateCompany = async (companyId, data) => {
   }
 };
 
+const hasAssignedInterviews = async (companyId) => {
+  const compRes = await pool.query(
+    `SELECT company_name, company_code FROM companies WHERE company_id = $1`,
+    [companyId]
+  );
+  if (compRes.rows.length === 0) return false;
+  const companyName = compRes.rows[0].company_name;
+
+  const intRes = await pool.query(
+    `SELECT iv.id 
+     FROM interviews iv
+     LEFT JOIN candidate_submissions cs ON cs.id = iv.submission_id
+     LEFT JOIN companies comp ON comp.company_id = iv.company_id
+     WHERE iv.company_id = $1
+        OR (comp.company_id = $1)
+        OR (iv.company_id IS NULL AND LOWER(TRIM(COALESCE(comp.company_name, cs.client_company))) = LOWER(TRIM($2)))
+     LIMIT 1`,
+    [companyId, companyName]
+  );
+
+  if (intRes.rows.length > 0) return true;
+
+  const pipeRes = await pool.query(
+    `SELECT id FROM candidate_company_pipeline 
+     WHERE company_id = $1 OR LOWER(TRIM(company_name)) = LOWER(TRIM($2))
+     LIMIT 1`,
+    [companyId, companyName]
+  );
+
+  return pipeRes.rows.length > 0;
+};
+
 const deleteCompany = async (companyId) => {
+  const hasInterviews = await hasAssignedInterviews(companyId);
+  if (hasInterviews) {
+    const err = new Error('This company is currently assigned to one or more interviews and cannot be deleted. Please remove or reassign the related interviews before deleting this company.');
+    err.statusCode = 400;
+    throw err;
+  }
   const result = await pool.query(`DELETE FROM companies WHERE company_id = $1 RETURNING company_id`, [companyId]);
   if (result.rows.length === 0) {
     const err = new Error('Company not found');
@@ -348,5 +386,6 @@ module.exports = {
   deleteCompany,
   updateBranch,
   deleteBranch,
+  hasAssignedInterviews,
 };
 
