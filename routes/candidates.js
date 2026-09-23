@@ -21,6 +21,7 @@ router.use(authenticate);
 // Check duplicate route must come BEFORE /:id route to avoid route matching issues
 router.post('/check-duplicate', validate(candidateDuplicateSchema), asyncHandler(candidatesController.checkDuplicate));
 router.get('/next-code', asyncHandler(candidatesController.getNextCandidateCode));
+router.get('/departments', asyncHandler(candidatesController.getDepartments));
 
 // CRUD routes
 router.get('/', validate(candidateListSchema), asyncHandler(candidatesController.listCandidates));

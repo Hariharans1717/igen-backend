@@ -829,6 +829,18 @@ const getNextCandidateCode = async () => {
   return 'IG' + formattedNumber;
 };
 
+const getDepartments = async () => {
+  try {
+    const res = await pool.query(
+      "SELECT DISTINCT department FROM candidates WHERE department IS NOT NULL AND TRIM(department) != '' ORDER BY department ASC"
+    );
+    return res.rows.map(r => (r.department ? r.department.trim() : '')).filter(Boolean);
+  } catch (err) {
+    console.error('Error fetching distinct departments:', err);
+    return [];
+  }
+};
+
 module.exports = {
   listCandidates,
   getCandidateById,
@@ -840,4 +852,5 @@ module.exports = {
   checkDuplicate,
   getCandidateHistory,
   getNextCandidateCode,
+  getDepartments,
 };

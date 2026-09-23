@@ -81,6 +81,11 @@ const getNextCandidateCode = async (req, res) => {
   return res.json({ candidateCode: code });
 };
 
+const getDepartments = async (req, res) => {
+  const departments = await candidateService.getDepartments();
+  return res.json(departments);
+};
+
 module.exports = {
   listCandidates,
   getCandidate,
@@ -91,4 +96,5 @@ module.exports = {
   getCandidateHistory,
   updateStatus,
   getNextCandidateCode,
+  getDepartments,
 };
