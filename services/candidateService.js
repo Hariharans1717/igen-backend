@@ -1,5 +1,9 @@
 const pool = require('../config/db');
 const googleDriveService = require('./googleDriveService');
+
+// Ensure is_accessed column exists in candidates table
+pool.query("ALTER TABLE candidates ADD COLUMN IF NOT EXISTS is_accessed BOOLEAN DEFAULT FALSE;").catch(() => {});
+
 const {
   mapEmploymentStatusFromDb,
   normalizeEmploymentStatus,
@@ -56,6 +60,7 @@ const mapCandidateRow = (row) => ({
   status: row.is_archived ? 'archived' : mapCandidateStatusFromDb(row.status),
   isDeleted: row.status === 'inactive',
   isArchived: row.is_archived || false,
+  isAccessed: Boolean(row.is_accessed),
   createdBy: row.created_by,
   createdAt: row.created_at,
   updatedAt: row.updated_at,
@@ -287,6 +292,10 @@ const listCandidates = async ({
 };
 
 const getCandidateById = async (id) => {
+  try {
+    await pool.query('UPDATE candidates SET is_accessed = TRUE WHERE id = $1', [id]);
+  } catch (err) {}
+
   const result = await pool.query(
     `SELECT c.*,
       CASE WHEN EXISTS (SELECT 1 FROM greyhr_archive ga WHERE ga.candidate_id = c.id) THEN true ELSE false END AS is_archived
