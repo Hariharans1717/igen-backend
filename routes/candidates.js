@@ -16,6 +16,14 @@ const {
 
 const router = express.Router();
 
+// =========================================
+// Public Candidate Routes (Accessible without login)
+// =========================================
+router.post('/register', validate(candidateCreateSchema), asyncHandler(candidatesController.createCandidate));
+router.post('/check-duplicate-public', validate(candidateDuplicateSchema), asyncHandler(candidatesController.checkDuplicate));
+router.get('/next-code-public', asyncHandler(candidatesController.getNextCandidateCode));
+router.get('/departments-public', asyncHandler(candidatesController.getDepartments));
+
 router.use(authenticate);
 
 // Check duplicate route must come BEFORE /:id route to avoid route matching issues

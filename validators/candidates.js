@@ -21,7 +21,7 @@ const candidateCreateSchema = z.object({
     email: z.string().email(),
     mobile: z.string().trim().min(5),
     employmentStatus: z.enum(EMPLOYMENT_STATUSES),
-    expectedCTC: z.coerce.number().nonnegative(),
+    expectedCTC: z.coerce.number().nonnegative().optional().nullable(),
     expectedCurrency: z.string().optional(),
     preferredLocation: z.string().trim().optional().nullable(),
     skills: z.array(z.string().trim()).optional(),

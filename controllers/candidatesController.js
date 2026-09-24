@@ -17,10 +17,11 @@ const getCandidate = async (req, res) => {
 const createCandidate = async (req, res) => {
   try {
     console.log('📨 [createCandidate] Received request');
-    console.log('👤 User ID:', req.user.id);
+    const userId = req.user ? req.user.id : null;
+    console.log('👤 User ID:', userId || 'Public Candidate Registration');
     console.log('📦 Validated Body:', JSON.stringify(req.validated.body, null, 2));
     
-    const candidate = await candidateService.createCandidate(req.validated.body, req.user.id);
+    const candidate = await candidateService.createCandidate(req.validated.body, userId);
     
     console.log('✅ [createCandidate] Candidate created successfully');
     console.log('📤 Response:', JSON.stringify(candidate, null, 2));

@@ -1,8 +1,24 @@
 const pool = require('../config/db');
 const googleDriveService = require('./googleDriveService');
 
-// Ensure is_accessed column exists in candidates table
-pool.query("ALTER TABLE candidates ADD COLUMN IF NOT EXISTS is_accessed BOOLEAN DEFAULT FALSE;").catch(() => {});
+// Ensure database schema allows optional fields for candidates (only name, email, mobile required)
+(async () => {
+  try {
+    await pool.query("ALTER TABLE candidates ADD COLUMN IF NOT EXISTS is_accessed BOOLEAN DEFAULT FALSE;");
+    await pool.query("ALTER TABLE candidates ALTER COLUMN expected_ctc DROP NOT NULL;");
+    await pool.query("ALTER TABLE candidates ALTER COLUMN preferred_location DROP NOT NULL;");
+    await pool.query("ALTER TABLE candidates ALTER COLUMN skills DROP NOT NULL;");
+    await pool.query("ALTER TABLE candidates ALTER COLUMN skills SET DEFAULT '{}';");
+    await pool.query("ALTER TABLE candidates ALTER COLUMN employment_status DROP NOT NULL;");
+    await pool.query("ALTER TABLE candidates ALTER COLUMN employment_status SET DEFAULT 'unemployed';");
+    await pool.query("ALTER TABLE candidate_salary ALTER COLUMN expected_ctc DROP NOT NULL;");
+    await pool.query("ALTER TABLE candidate_salary ADD COLUMN IF NOT EXISTS expected_hike_percent NUMERIC(5,2);");
+    await pool.query("ALTER TABLE candidate_documents ALTER COLUMN aadhaar_encrypted DROP NOT NULL;");
+    await pool.query("ALTER TABLE candidate_documents ALTER COLUMN pan_number DROP NOT NULL;");
+  } catch (err) {
+    console.warn('⚠️ Dynamic DB schema update warning:', err.message);
+  }
+})();
 
 const {
   mapEmploymentStatusFromDb,
@@ -43,7 +59,7 @@ const mapCandidateRow = (row) => ({
   department: toProperCase(row.department) || undefined,
   currentCTC: row.current_ctc ? parseFloat(row.current_ctc) : undefined,
   currentCurrency: row.current_currency || 'INR',
-  expectedCTC: parseFloat(row.expected_ctc),
+  expectedCTC: row.expected_ctc != null && row.expected_ctc !== '' ? parseFloat(row.expected_ctc) : undefined,
   expectedCurrency: row.expected_currency || 'INR',
   expectedHikePercent: row.expected_hike_percent ? parseFloat(row.expected_hike_percent) : undefined,
   aadhaarNumber: row.aadhaar_number || undefined,
@@ -53,7 +69,7 @@ const mapCandidateRow = (row) => ({
   candidateCode: row.candidate_code || undefined,
   dob: row.dob ? formatLocalDate(row.dob) : undefined,
   experience: row.experience_years ? parseFloat(row.experience_years) : undefined,
-  preferredLocation: toProperCase(row.preferred_location),
+  preferredLocation: toProperCase(row.preferred_location) || undefined,
   skills: toProperCaseArray(row.skills) || [],
   keySkills: toProperCaseArray(row.key_skills) || [],
   tags: Array.isArray(row.tags) ? Array.from(new Set(row.tags)) : [],
@@ -425,18 +441,26 @@ const createCandidate = async (data, userId) => {
     }
   }
 
-  // Upload files to Google Drive using Candidate Name and Candidate Code (ID)
-  const uploadResult = await googleDriveService.uploadCandidateFiles(
-    data.name,
-    candidateCode,
-    data.photoUrl,
-    data.resumeUrl,
-    data.resumeFilename
-  );
+  let finalPhotoUrl = data.photoUrl || null;
+  let finalResumeUrl = data.resumeUrl || null;
+  let finalResumeFilename = data.resumeFilename || null;
 
-  const finalPhotoUrl = uploadResult.photoUrl;
-  const finalResumeUrl = uploadResult.resumeUrl;
-  const finalResumeFilename = uploadResult.resumeFilename;
+  try {
+    const uploadResult = await googleDriveService.uploadCandidateFiles(
+      data.name,
+      candidateCode,
+      data.photoUrl,
+      data.resumeUrl,
+      data.resumeFilename
+    );
+    if (uploadResult) {
+      finalPhotoUrl = uploadResult.photoUrl || finalPhotoUrl;
+      finalResumeUrl = uploadResult.resumeUrl || finalResumeUrl;
+      finalResumeFilename = uploadResult.resumeFilename || finalResumeFilename;
+    }
+  } catch (driveErr) {
+    console.warn('⚠️ Google Drive upload error (continuing candidate registration):', driveErr.message);
+  }
 
   let candidate;
 
@@ -461,9 +485,9 @@ const createCandidate = async (data, userId) => {
         candidate_code=$26, dob=$27, expected_hike_percent=$28, key_skills=$29, tags=$30, priority=$31
        WHERE id=$32 RETURNING *`,
       [
-        data.name, data.email, data.mobile, employmentStatus, data.expectedCTC, data.preferredLocation,
-        data.skills, data.currentCompany || null, data.currentDesignation || null, data.currentCTC || null, data.experience || null,
-        status, validUserId, finalPhotoUrl || null, finalResumeUrl || null, finalResumeFilename || null,
+        data.name, data.email, data.mobile, employmentStatus || 'unemployed', data.expectedCTC != null ? data.expectedCTC : null, data.preferredLocation || null,
+        data.skills || [], data.currentCompany || null, data.currentDesignation || null, data.currentCTC || null, data.experience || null,
+        status, validUserId, finalPhotoUrl, finalResumeUrl, finalResumeFilename,
         data.aadhaarNumber || null, aadhaarLast4, data.panNumber ? data.panNumber.toUpperCase() : null, currentCurrency, expectedCurrency,
         data.department || null, data.noticePeriod || null, data.currentLocation || null, data.remarks || null,
         data.candidateCode || null, data.dob || null, data.expectedHikePercent != null ? data.expectedHikePercent : null,
@@ -477,11 +501,17 @@ const createCandidate = async (data, userId) => {
     candidate = result.rows[0];
     console.log('✅ Candidate restored:', candidate.id);
 
-    await pool.query(
-      `INSERT INTO candidate_timeline (candidate_id, hr_user_id, action, note)
-       VALUES ($1, $2, $3, $4)`,
-      [candidate.id, validUserId, 'Candidate Restored', `Profile restored and updated for ${candidate.name}`]
-    );
+    if (validUserId) {
+      try {
+        await pool.query(
+          `INSERT INTO candidate_timeline (candidate_id, hr_user_id, action, note)
+           VALUES ($1, $2, $3, $4)`,
+          [candidate.id, validUserId, 'Candidate Restored', `Profile restored and updated for ${candidate.name}`]
+        );
+      } catch (tErr) {
+        console.warn('⚠️ Timeline insert skipped:', tErr.message);
+      }
+    }
   } else {
     console.log('➕ Creating new candidate');
     const aadhaarLast4 = data.aadhaarNumber ? data.aadhaarNumber.replace(/\D/g, '').slice(-4) : (data.aadhaarLast4 || null);
@@ -497,9 +527,9 @@ const createCandidate = async (data, userId) => {
         department, notice_period, current_location, remarks, candidate_code, dob, expected_hike_percent, key_skills, tags, priority
       ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27,$28,$29,$30,$31) RETURNING *`,
       [
-        data.name, data.email, data.mobile, employmentStatus, data.expectedCTC, data.preferredLocation,
-        data.skills, data.currentCompany || null, data.currentDesignation || null, data.currentCTC || null, data.experience || null,
-        status, validUserId, finalPhotoUrl || null, finalResumeUrl || null, finalResumeFilename || null,
+        data.name, data.email, data.mobile, employmentStatus || 'unemployed', data.expectedCTC != null ? data.expectedCTC : null, data.preferredLocation || null,
+        data.skills || [], data.currentCompany || null, data.currentDesignation || null, data.currentCTC || null, data.experience || null,
+        status, validUserId, finalPhotoUrl, finalResumeUrl, finalResumeFilename,
         data.aadhaarNumber || null, aadhaarLast4, data.panNumber ? data.panNumber.toUpperCase() : null, currentCurrency, expectedCurrency,
         data.department || null, data.noticePeriod || null, data.currentLocation || null, data.remarks || null,
         data.candidateCode || null, data.dob || null, data.expectedHikePercent != null ? data.expectedHikePercent : null,
@@ -512,11 +542,17 @@ const createCandidate = async (data, userId) => {
     candidate = result.rows[0];
     console.log('✅ Candidate created:', candidate.id);
 
-    await pool.query(
-      `INSERT INTO candidate_timeline (candidate_id, hr_user_id, action, note)
-       VALUES ($1, $2, $3, $4)`,
-      [candidate.id, validUserId, 'Candidate Created', `Profile created for ${candidate.name}`]
-    );
+    if (validUserId) {
+      try {
+        await pool.query(
+          `INSERT INTO candidate_timeline (candidate_id, hr_user_id, action, note)
+           VALUES ($1, $2, $3, $4)`,
+          [candidate.id, validUserId, 'Candidate Created', `Profile created for ${candidate.name}`]
+        );
+      } catch (tErr) {
+        console.warn('⚠️ Timeline insert skipped:', tErr.message);
+      }
+    }
   }
 
   // Insert into candidate_documents & candidate_salary for normalization compliance
@@ -535,13 +571,13 @@ const createCandidate = async (data, userId) => {
 
     const ectcEntries = data.ectcEntries && data.ectcEntries.length > 0 
       ? data.ectcEntries 
-      : [{ expectedCTC: data.expectedCTC, expectedCurrency: data.expectedCurrency || 'INR', location: data.preferredLocation || null }];
+      : [{ expectedCTC: data.expectedCTC != null ? data.expectedCTC : null, expectedCurrency: data.expectedCurrency || 'INR', location: data.preferredLocation || null }];
 
     for (const ectc of ectcEntries) {
       await pool.query(
         `INSERT INTO candidate_salary (candidate_id, current_ctc, current_currency, expected_ctc, expected_currency, location, expected_hike_percent)
          VALUES ($1, $2, $3, $4, $5, $6, $7)`,
-        [candidate.id, data.currentCTC || null, data.currentCurrency || 'INR', ectc.expectedCTC || data.expectedCTC, ectc.expectedCurrency || 'INR', ectc.location || null, data.expectedHikePercent != null ? data.expectedHikePercent : null]
+        [candidate.id, data.currentCTC || null, data.currentCurrency || 'INR', ectc.expectedCTC != null ? ectc.expectedCTC : (data.expectedCTC != null ? data.expectedCTC : null), ectc.expectedCurrency || 'INR', ectc.location || null, data.expectedHikePercent != null ? data.expectedHikePercent : null]
       );
     }
   } catch (subErr) {
