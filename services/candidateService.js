@@ -518,14 +518,16 @@ const createCandidate = async (data, userId) => {
     const currentCurrency = data.currentCurrency || 'INR';
     const expectedCurrency = data.expectedCurrency || 'INR';
 
+    const candidateCreatedAt = data.createdAt || data.created_at || null;
+
     const result = await pool.query(
       `INSERT INTO candidates (
         name, email, mobile, employment_status, expected_ctc, preferred_location,
         skills, current_company, current_designation, current_ctc, experience_years,
         status, created_by, photo_url, resume_url, resume_filename,
         aadhaar_number, aadhaar_last4, pan_number, current_currency, expected_currency,
-        department, notice_period, current_location, remarks, candidate_code, dob, expected_hike_percent, key_skills, tags, priority
-      ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27,$28,$29,$30,$31) RETURNING *`,
+        department, notice_period, current_location, remarks, candidate_code, dob, expected_hike_percent, key_skills, tags, priority, created_at
+      ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27,$28,$29,$30,$31, COALESCE($32::timestamptz, CURRENT_TIMESTAMP)) RETURNING *`,
       [
         data.name, data.email, data.mobile, employmentStatus || 'unemployed', data.expectedCTC != null ? data.expectedCTC : null, data.preferredLocation || null,
         data.skills || [], data.currentCompany || null, data.currentDesignation || null, data.currentCTC || null, data.experience || null,
@@ -535,7 +537,8 @@ const createCandidate = async (data, userId) => {
         data.candidateCode || null, data.dob || null, data.expectedHikePercent != null ? data.expectedHikePercent : null,
         data.keySkills || [],
         data.tags || [],
-        data.priority || false
+        data.priority || false,
+        candidateCreatedAt
       ]
     );
     
