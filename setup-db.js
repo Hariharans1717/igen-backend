@@ -40,6 +40,27 @@ async function run() {
     await pool.query(schemaSql);
     console.log('✅ Schema executed successfully!\n');
 
+    // Keep the database compatible with public candidate registration, where
+    // optional profile fields may be omitted.
+    await pool.query(`
+      ALTER TABLE candidates
+        ADD COLUMN IF NOT EXISTS is_accessed BOOLEAN DEFAULT FALSE;
+      ALTER TABLE candidates
+        ALTER COLUMN expected_ctc DROP NOT NULL,
+        ALTER COLUMN preferred_location DROP NOT NULL,
+        ALTER COLUMN skills DROP NOT NULL,
+        ALTER COLUMN skills SET DEFAULT '{}',
+        ALTER COLUMN employment_status DROP NOT NULL,
+        ALTER COLUMN employment_status SET DEFAULT 'unemployed';
+      ALTER TABLE candidate_salary
+        ALTER COLUMN expected_ctc DROP NOT NULL,
+        ADD COLUMN IF NOT EXISTS expected_hike_percent NUMERIC(5,2);
+      ALTER TABLE candidate_documents
+        ALTER COLUMN aadhaar_encrypted DROP NOT NULL,
+        ALTER COLUMN pan_number DROP NOT NULL;
+    `);
+    console.log('✅ Candidate registration compatibility applied!\n');
+
     // Step 3: Verify tables were created
     const tables = await pool.query(`
       SELECT table_name FROM information_schema.tables 

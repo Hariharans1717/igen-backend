@@ -4,8 +4,9 @@
   "description": "iGEN Talent Acquisition & Candidate Pipeline Tracking System — Backend API",
   "main": "server.js",
   "scripts": {
+    "prestart": "node setup-db.js",
     "start": "node server.js",
-    "dev": "node --watch server.js",
+    "dev": "node setup-db.js && node --watch server.js",
     "setup-db": "node setup-db.js"
   },
   "dependencies": {
