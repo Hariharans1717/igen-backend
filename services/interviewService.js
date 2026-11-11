@@ -14,7 +14,7 @@ const INTERVIEW_SELECT = `
     COALESCE(TO_CHAR(iv.interview_time, 'HH24:MI'), TO_CHAR(iv.interview_date, 'HH24:MI')) AS interview_time,
     iv.role,
     iv.department,
-    COALESCE(ccp.interview_status, c.status, iv.result) AS pipeline_status
+    COALESCE(ccp.interview_status, c.status, iv.result::text) AS pipeline_status
   FROM interviews iv
   LEFT JOIN candidate_submissions cs ON cs.id = iv.submission_id
   LEFT JOIN candidates c ON c.id = cs.candidate_id OR c.id = iv.candidate_id_uuid

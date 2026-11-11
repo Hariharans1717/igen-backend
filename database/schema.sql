@@ -262,6 +262,7 @@ CREATE TABLE IF NOT EXISTS interviews (
     candidate_name VARCHAR(255),
     role VARCHAR(100),
     department VARCHAR(100),
+    company_name VARCHAR(100),
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );

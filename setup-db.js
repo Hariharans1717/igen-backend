@@ -58,6 +58,8 @@ async function run() {
       ALTER TABLE candidate_documents
         ALTER COLUMN aadhaar_encrypted DROP NOT NULL,
         ALTER COLUMN pan_number DROP NOT NULL;
+      ALTER TABLE interviews
+        ADD COLUMN IF NOT EXISTS company_name VARCHAR(100);
     `);
     console.log('✅ Candidate registration compatibility applied!\n');
 
