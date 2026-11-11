@@ -386,6 +386,36 @@ const uploadCandidateFiles = async (name, candidateCodeOrMobile, photoDataUrl, r
   }
 };
 
+const deleteCandidateFiles = async (name, candidateCodeOrMobile) => {
+  const drive = await getDriveClient();
+  if (!drive) return false;
+
+  try {
+    const rootFolderId = await findFolder(ROOT_FOLDER_NAME, 'root');
+    if (!rootFolderId) return true;
+
+    const candidateFolderId = await findFolder(`${name} - ${candidateCodeOrMobile}`, rootFolderId);
+    if (!candidateFolderId) return true;
+
+    const response = await drive.files.list({
+      q: `'${candidateFolderId}' in parents and trashed = false`,
+      fields: 'files(id)',
+      pageSize: 1000,
+      supportsAllDrives: true,
+      includeItemsFromAllDrives: true,
+    });
+
+    for (const file of response.data.files || []) {
+      await drive.files.delete({ fileId: file.id, supportsAllDrives: true });
+    }
+    await drive.files.delete({ fileId: candidateFolderId, supportsAllDrives: true });
+    return true;
+  } catch (err) {
+    console.error('Failed to delete candidate files from Google Drive:', err.message);
+    return false;
+  }
+};
+
 /**
  * Upload a note attachment file for a candidate to Google Drive.
  * Folder structure: igen candidates/ -> Candidate Name - Candidate Code or Mobile / -> note_att_<timestamp>_<filename>
@@ -446,6 +476,7 @@ const uploadNoteAttachment = async (name, candidateCodeOrMobile, attachmentDataU
 
 module.exports = {
   uploadCandidateFiles,
+  deleteCandidateFiles,
   uploadNoteAttachment,
   getDriveClient,
   deleteFileFromDrive,

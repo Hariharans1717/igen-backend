@@ -89,6 +89,7 @@ const greyhrRoutes = require('./routes/greyhr');
 const dashboardRoutes = require('./routes/dashboard');
 const userRoutes = require('./routes/users');
 const companyRoutes = require('./routes/companies');
+const employeeRoutes = require('./routes/employees');
 
 app.use('/api/auth', authRoutes);
 app.use('/api/candidates', candidateRoutes);
@@ -100,6 +101,7 @@ app.use('/api/greyhr', greyhrRoutes);
 app.use('/api/dashboard', dashboardRoutes);
 app.use('/api/users', userRoutes);
 app.use('/api/companies', companyRoutes);
+app.use('/api/employees', employeeRoutes);
 
 console.log('📋 Routes Registered:');
 console.log('   ✅ POST   /api/candidates');

@@ -12,6 +12,7 @@ const mapArchiveEntry = (row) => {
     currentCTC: row.current_ctc || profileCandidate.current_ctc || profileCandidate.currentCTC || null,
     currency: row.currency || profileCandidate.current_currency || profileCandidate.currentCurrency || 'INR',
     joiningDate: row.joining_date || row.archive_date,
+    lastWorkingDate: row.last_working_date || profileCandidate.lwd || null,
     archivedDate: row.archive_date,
     archivedBy: row.archived_by,
     archivedByName: row.archived_by_name || '',
@@ -44,6 +45,7 @@ const listArchive = async ({ page, pageSize, search }) => {
       COALESCE(c.current_designation, ga.profile_data->'candidate'->>'current_designation') AS designation,
       COALESCE(c.current_ctc, (ga.profile_data->'candidate'->>'current_ctc')::numeric) AS current_ctc,
       COALESCE(c.current_currency, ga.profile_data->'candidate'->>'current_currency') AS currency,
+      COALESCE(c.lwd::text, ga.profile_data->'candidate'->>'lwd') AS last_working_date,
       CONCAT(u.first_name, ' ', u.last_name) AS archived_by_name,
       (ga.profile_data->>'joining_date') AS joining_date
      FROM greyhr_archive ga
@@ -91,6 +93,35 @@ const archiveCandidate = async ({ candidateId, companyName, joiningDate }, userI
     `INSERT INTO candidate_timeline (candidate_id, hr_user_id, action, note, related_company)
      VALUES ($1, $2, $3, $4, $5)`,
     [candidateId, userId, 'Archived to GreyHR', `Profile archived after joining ${companyName}`, companyName]
+  );
+
+  await pool.query(
+    `INSERT INTO employees (
+       candidate_id, employee_name, email, mobile, company_name, designation,
+       department, joining_date, last_working_date, created_by
+     ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+     ON CONFLICT (candidate_id) DO UPDATE SET
+       employee_name = EXCLUDED.employee_name,
+       email = EXCLUDED.email,
+       mobile = EXCLUDED.mobile,
+       company_name = EXCLUDED.company_name,
+       designation = EXCLUDED.designation,
+       department = EXCLUDED.department,
+       joining_date = EXCLUDED.joining_date,
+       last_working_date = COALESCE(EXCLUDED.last_working_date, employees.last_working_date),
+       updated_at = NOW()`,
+    [
+      candidateId,
+      candidate.name,
+      candidate.email,
+      candidate.mobile,
+      companyName,
+      candidate.current_designation,
+      candidate.department,
+      joiningDate || null,
+      candidate.lwd || null,
+      userId || null,
+    ]
   );
 
   const enriched = await pool.query(

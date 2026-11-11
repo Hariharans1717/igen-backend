@@ -7,18 +7,21 @@ const INTERVIEW_SELECT = `
   SELECT iv.*,
     COALESCE(cs.candidate_id, iv.candidate_id_uuid) AS candidate_id,
     COALESCE(c.name, iv.candidate_name) AS candidate_name,
-    COALESCE(comp.company_name, cs.client_company) AS company_name,
+    COALESCE(comp.company_name, cs.client_company, iv.company_name) AS company_name,
     b.branch_name,
     b.city AS branch_city,
     cs.submission_date AS resume_submission_date,
     COALESCE(TO_CHAR(iv.interview_time, 'HH24:MI'), TO_CHAR(iv.interview_date, 'HH24:MI')) AS interview_time,
     iv.role,
-    iv.department
+    iv.department,
+    COALESCE(ccp.interview_status, c.status, iv.result) AS pipeline_status
   FROM interviews iv
   LEFT JOIN candidate_submissions cs ON cs.id = iv.submission_id
   LEFT JOIN candidates c ON c.id = cs.candidate_id OR c.id = iv.candidate_id_uuid
   LEFT JOIN companies comp ON comp.company_id = iv.company_id
   LEFT JOIN branches b ON b.branch_id = iv.branch_id
+  LEFT JOIN candidate_company_pipeline ccp ON ccp.candidate_id = c.id
+    AND LOWER(TRIM(ccp.company_name)) = LOWER(TRIM(COALESCE(comp.company_name, cs.client_company, iv.company_name, '')))
 `;
 
 const toDbMode = (mode) => {
@@ -42,7 +45,7 @@ const mapInterviewRow = (row) => ({
   branchId: row.branch_id || undefined,
   candidateId: row.candidate_id || '',
   candidateName: toProperCase(row.candidate_name) || '',
-  companyName: toProperCase(row.company_name) || '',
+  companyName: row.company_name || '',
   branchName: toProperCase(row.branch_name) || '',
   branchCity: toProperCase(row.branch_city) || '',
   resumeSubmissionDate: row.resume_submission_date || '',
@@ -57,6 +60,7 @@ const mapInterviewRow = (row) => ({
   mode: fromDbMode(row.interview_mode),
   feedback: row.interview_feedback || undefined,
   result: mapInterviewResultFromDb(row.result),
+  pipelineStatus: row.pipeline_status || mapInterviewResultFromDb(row.result),
   offeredCTC: row.offered_ctc ? parseFloat(row.offered_ctc) : undefined,
   offerStatus: row.offer_status || undefined,
   joiningDate: row.joining_date || undefined,
@@ -376,7 +380,10 @@ const updateInterview = async (id, data) => {
 
   if (Object.prototype.hasOwnProperty.call(data, 'companyId') || Object.prototype.hasOwnProperty.call(data, 'company_id')) setField('company_id', data.companyId || data.company_id);
   if (Object.prototype.hasOwnProperty.call(data, 'branchId') || Object.prototype.hasOwnProperty.call(data, 'branch_id')) setField('branch_id', data.branchId || data.branch_id);
+  if (Object.prototype.hasOwnProperty.call(data, 'submissionId')) setField('submission_id', data.submissionId || null);
   if (Object.prototype.hasOwnProperty.call(data, 'interviewDate') || Object.prototype.hasOwnProperty.call(data, 'interview_date')) setField('interview_date', cleanTimestamp(data.interviewDate !== undefined ? data.interviewDate : data.interview_date));
+  if (Object.prototype.hasOwnProperty.call(data, 'interview_time')) setField('interview_time', cleanTimestamp(data.interview_time));
+  if (Object.prototype.hasOwnProperty.call(data, 'interview_type')) setField('interview_type', data.interview_type || null);
   if (Object.prototype.hasOwnProperty.call(data, 'round')) setField('interview_round', data.round ? toProperCase(data.round) : null);
   if (Object.prototype.hasOwnProperty.call(data, 'title')) setField('title', data.title ? toProperCase(data.title) : null);
   if (Object.prototype.hasOwnProperty.call(data, 'interviewer_name')) setField('interviewer_name', data.interviewer_name ? toProperCase(data.interviewer_name) : null);
@@ -389,7 +396,9 @@ const updateInterview = async (id, data) => {
   if (Object.prototype.hasOwnProperty.call(data, 'offeredCTC')) setField('offered_ctc', data.offeredCTC);
   if (Object.prototype.hasOwnProperty.call(data, 'offerStatus')) setField('offer_status', data.offerStatus);
   if (Object.prototype.hasOwnProperty.call(data, 'joiningDate')) setField('joining_date', cleanTimestamp(data.joiningDate));
-  if (Object.prototype.hasOwnProperty.call(data, 'recruiterNotes')) setField('recruiter_notes', data.recruiterNotes);
+  if (Object.prototype.hasOwnProperty.call(data, 'recruiterNotes') || Object.prototype.hasOwnProperty.call(data, 'notes')) {
+    setField('recruiter_notes', data.recruiterNotes || data.notes || null);
+  }
   if (Object.prototype.hasOwnProperty.call(data, 'subStatus') || Object.prototype.hasOwnProperty.call(data, 'sub_status')) setField('sub_status', data.subStatus || data.sub_status);
 
   if (fields.length === 0) return null;

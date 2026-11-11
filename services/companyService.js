@@ -5,6 +5,44 @@ const toProperCase = (str) => {
   return str.replace(/\b\w+/g, (txt) => txt.charAt(0).toUpperCase() + txt.substring(1).toLowerCase());
 };
 
+const getUniqueCompanyCode = async (client, requestedCode, companyName) => {
+  const cleanName = companyName.replace(/[^a-zA-Z]/g, '').toUpperCase();
+  const defaultPrefix = (cleanName.slice(0, 3) || 'COM').padEnd(3, 'X');
+  const initialCode = (requestedCode || `${defaultPrefix}1001`).trim().toUpperCase();
+  const match = initialCode.match(/^(.+?)(\d+)$/);
+  const prefix = match ? match[1] : initialCode;
+  let suffix = match ? Number(match[2]) : 1001;
+
+  await client.query('SELECT pg_advisory_xact_lock(hashtext($1))', [`company-code:${prefix}`]);
+
+  let candidateCode = initialCode;
+  while (true) {
+    const existing = await client.query(
+      `SELECT 1 FROM companies WHERE LOWER(TRIM(company_code)) = LOWER($1) LIMIT 1`,
+      [candidateCode]
+    );
+    if (existing.rows.length === 0) return candidateCode;
+
+    suffix += 1;
+    candidateCode = `${prefix}${suffix}`;
+  }
+};
+
+const getNextCompanyCode = async (companyName) => {
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+    const companyCode = await getUniqueCompanyCode(client, null, String(companyName || ''));
+    await client.query('ROLLBACK');
+    return companyCode;
+  } catch (err) {
+    await client.query('ROLLBACK');
+    throw err;
+  } finally {
+    client.release();
+  }
+};
+
 const listCompanies = async () => {
   const query = `
     SELECT 
@@ -33,7 +71,7 @@ const listCompanies = async () => {
   const result = await pool.query(query);
   return result.rows.map(row => ({
     companyId: row.companyId,
-    companyName: toProperCase(row.companyName),
+    companyName: row.companyName,
     companyCode: row.companyCode || undefined,
     branchCount: row.branchCount,
     branches: (row.branches || []).map(b => ({ ...b, branchName: toProperCase(b.branchName), city: toProperCase(b.city) })),
@@ -71,7 +109,7 @@ const getCompanyById = async (companyId) => {
   const row = result.rows[0];
   return {
     companyId: row.companyId,
-    companyName: toProperCase(row.companyName),
+    companyName: row.companyName,
     companyCode: row.companyCode || undefined,
     branchCount: row.branchCount,
     branches: (row.branches || []).map(b => ({ ...b, branchName: toProperCase(b.branchName), city: toProperCase(b.city) })),
@@ -106,9 +144,11 @@ const createCompany = async (data) => {
   try {
     await client.query('BEGIN');
 
+    const uniqueCompanyCode = await getUniqueCompanyCode(client, companyCode, companyName.trim());
+
     const compRes = await client.query(
       `INSERT INTO companies (company_name, company_code) VALUES ($1, $2) RETURNING company_id, company_name, company_code, created_at`,
-      [toProperCase(companyName.trim()), companyCode ? companyCode.trim() : null]
+      [companyName.trim(), uniqueCompanyCode]
     );
     const company = compRes.rows[0];
 
@@ -197,7 +237,7 @@ const updateCompany = async (companyId, data) => {
        WHERE company_id = $3
        RETURNING company_id, company_name, company_code, created_at`,
       [
-        companyName ? toProperCase(companyName.trim()) : null,
+        companyName ? companyName.trim() : null,
         companyCode !== undefined ? (companyCode ? companyCode.trim() : null) : null,
         companyId
       ]
@@ -380,6 +420,7 @@ const deleteBranch = async (companyId, branchId) => {
 module.exports = {
   listCompanies,
   getCompanyById,
+  getNextCompanyCode,
   createCompany,
   addBranch,
   updateCompany,

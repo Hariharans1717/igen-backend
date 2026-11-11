@@ -36,6 +36,7 @@ router.get('/', validate(candidateListSchema), asyncHandler(candidatesController
 router.post('/', authorize('admin', 'recruiter'), validate(candidateCreateSchema), asyncHandler(candidatesController.createCandidate));
 router.get('/:id', asyncHandler(candidatesController.getCandidate));
 router.get('/:id/history', asyncHandler(candidatesController.getCandidateHistory));
+router.get('/:id/deletion-impact', authorize('admin', 'recruiter'), asyncHandler(candidatesController.getCandidateDeletionImpact));
 router.put('/:id', authorize('admin', 'recruiter'), validate(candidateUpdateSchema), asyncHandler(candidatesController.updateCandidate));
 router.patch('/:id/status', authorize('admin', 'recruiter'), asyncHandler(candidatesController.updateStatus));
 router.delete('/:id', authorize('admin', 'recruiter'), asyncHandler(candidatesController.deleteCandidate));

@@ -43,10 +43,17 @@ const updateCandidate = async (req, res) => {
   return res.json(candidate);
 };
 
+const getCandidateDeletionImpact = async (req, res) => {
+  const candidate = await candidateService.getCandidateById(req.params.id);
+  if (!candidate) return res.status(404).json({ error: 'Candidate not found.' });
+  const impact = await candidateService.getCandidateDeletionImpact(req.params.id);
+  return res.json(impact);
+};
+
 const deleteCandidate = async (req, res) => {
-  const success = await candidateService.softDeleteCandidate(req.params.id, req.user.id);
-  if (!success) return res.status(404).json({ error: 'Candidate not found.' });
-  return res.json({ success: true });
+  const result = await candidateService.deleteCandidate(req.params.id);
+  if (!result) return res.status(404).json({ error: 'Candidate not found.' });
+  return res.json({ success: true, ...result });
 };
 
 const checkDuplicate = async (req, res) => {
@@ -92,6 +99,7 @@ module.exports = {
   getCandidate,
   createCandidate,
   updateCandidate,
+  getCandidateDeletionImpact,
   deleteCandidate,
   checkDuplicate,
   getCandidateHistory,

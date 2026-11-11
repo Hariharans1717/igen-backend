@@ -117,7 +117,6 @@ const buildUpdate = (data) => {
     aadhaarNumber: 'aadhaar_number',
     aadhaarLast4: 'aadhaar_last4',
     panNumber: 'pan_number',
-    candidateCode: 'candidate_code',
     dob: 'dob',
     expectedHikePercent: 'expected_hike_percent',
     noticePeriod: 'notice_period',
@@ -399,7 +398,7 @@ const createCandidate = async (data, userId) => {
 
   // Check if an inactive candidate already exists with the same email or mobile
   const existing = await pool.query(
-    "SELECT id, status FROM candidates WHERE email = $1 OR mobile = $2",
+    "SELECT id, status, candidate_code FROM candidates WHERE email = $1 OR mobile = $2",
     [data.email, data.mobile]
   );
   
@@ -413,33 +412,14 @@ const createCandidate = async (data, userId) => {
     }
   }
 
-  // Generate sequential Candidate Code if not provided
-  let candidateCode = data.candidateCode;
-  if (!candidateCode || !candidateCode.trim()) {
+  // Keep the existing ID on restore; new registrations always get a server-assigned sequence ID.
+  let candidateCode = existing.rows[0]?.candidate_code;
+  if (!candidateCode) {
     const seqRes = await pool.query("SELECT nextval('candidate_id_seq') as seq");
     const seq = parseInt(seqRes.rows[0].seq, 10);
-    const formattedNumber = String(seq).padStart(4, '0');
-    candidateCode = 'IG' + formattedNumber;
-    data.candidateCode = candidateCode;
-  } else {
-    // If the candidateCode is provided, check if it follows the sequential format and sync sequence if needed
-    const codeTrim = candidateCode.trim();
-    if (codeTrim.startsWith('IG')) {
-      const numPart = codeTrim.slice(2);
-      if (/^\d+$/.test(numPart)) {
-        const numVal = parseInt(numPart, 10);
-        try {
-          const seqRes = await pool.query("SELECT last_value FROM candidate_id_seq");
-          const lastValue = parseInt(seqRes.rows[0].last_value, 10);
-          if (numVal >= lastValue) {
-            await pool.query("SELECT setval('candidate_id_seq', $1, true)", [numVal]);
-          }
-        } catch (seqErr) {
-          console.error('Failed to sync candidate_id_seq sequence:', seqErr);
-        }
-      }
-    }
+    candidateCode = `IG${String(seq).padStart(4, '0')}`;
   }
+  data.candidateCode = candidateCode;
 
   let finalPhotoUrl = data.photoUrl || null;
   let finalResumeUrl = data.resumeUrl || null;
@@ -482,8 +462,9 @@ const createCandidate = async (data, userId) => {
         photo_url=$14, resume_url=$15, resume_filename=$16,
         aadhaar_number=$17, aadhaar_last4=$18, pan_number=$19, current_currency=$20, expected_currency=$21,
         department=$22, notice_period=$23, current_location=$24, remarks=$25,
-        candidate_code=$26, dob=$27, expected_hike_percent=$28, key_skills=$29, tags=$30, priority=$31
-       WHERE id=$32 RETURNING *`,
+        candidate_code=$26, dob=$27, expected_hike_percent=$28, passport_number=$29, passport_expiry_date=$30,
+        key_skills=$31, tags=$32, priority=$33
+             WHERE id=$34 RETURNING *`,
       [
         data.name, data.email, data.mobile, employmentStatus || 'unemployed', data.expectedCTC != null ? data.expectedCTC : null, data.preferredLocation || null,
         data.skills || [], data.currentCompany || null, data.currentDesignation || null, data.currentCTC || null, data.experience || null,
@@ -491,6 +472,7 @@ const createCandidate = async (data, userId) => {
         data.aadhaarNumber || null, aadhaarLast4, data.panNumber ? data.panNumber.toUpperCase() : null, currentCurrency, expectedCurrency,
         data.department || null, data.noticePeriod || null, data.currentLocation || null, data.remarks || null,
         data.candidateCode || null, data.dob || null, data.expectedHikePercent != null ? data.expectedHikePercent : null,
+        data.passportNumber || null, data.passportExpiryDate || null,
         data.keySkills || [],
         data.tags || [],
         data.priority || false,
@@ -526,8 +508,9 @@ const createCandidate = async (data, userId) => {
         skills, current_company, current_designation, current_ctc, experience_years,
         status, created_by, photo_url, resume_url, resume_filename,
         aadhaar_number, aadhaar_last4, pan_number, current_currency, expected_currency,
-        department, notice_period, current_location, remarks, candidate_code, dob, expected_hike_percent, key_skills, tags, priority, created_at
-      ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27,$28,$29,$30,$31, COALESCE($32::timestamptz, CURRENT_TIMESTAMP)) RETURNING *`,
+        department, notice_period, current_location, remarks, candidate_code, dob, expected_hike_percent, key_skills, tags, priority,
+        passport_number, passport_expiry_date, created_at
+      ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27,$28,$29,$30,$31,$32,$33, COALESCE($34::timestamptz, CURRENT_TIMESTAMP)) RETURNING *`,
       [
         data.name, data.email, data.mobile, employmentStatus || 'unemployed', data.expectedCTC != null ? data.expectedCTC : null, data.preferredLocation || null,
         data.skills || [], data.currentCompany || null, data.currentDesignation || null, data.currentCTC || null, data.experience || null,
@@ -538,6 +521,8 @@ const createCandidate = async (data, userId) => {
         data.keySkills || [],
         data.tags || [],
         data.priority || false,
+        data.passportNumber || null,
+        data.passportExpiryDate || null,
         candidateCreatedAt
       ]
     );
@@ -635,7 +620,7 @@ const updateCandidate = async (id, data, userId) => {
 
   // Handle new file uploads to Google Drive if updated files are base64 strings
   const candidateName = data.name || existing.rows[0].name;
-  const candidateIdOrCode = data.candidateCode || existing.rows[0].candidate_code || existing.rows[0].id;
+  const candidateIdOrCode = existing.rows[0].candidate_code || existing.rows[0].id;
 
   if ((data.photoUrl && data.photoUrl.startsWith('data:')) || (data.resumeUrl && data.resumeUrl.startsWith('data:'))) {
     console.log(`🔧 [candidateService.updateCandidate] Uploading updated base64 files for ${candidateName} to Google Drive`);
@@ -719,22 +704,54 @@ const setCandidateStatus = async (id, status) => {
   );
 };
 
-const softDeleteCandidate = async (id, userId) => {
-  const validUserId = await resolveValidHrUserId(userId);
+const getCandidateDeletionImpact = async (id) => {
   const result = await pool.query(
-    "UPDATE candidates SET status = 'inactive' WHERE id = $1 AND status != 'inactive' RETURNING id",
+    `SELECT COUNT(DISTINCT iv.id)::int AS "interviewCount"
+     FROM interviews iv
+     LEFT JOIN candidate_submissions cs ON cs.id = iv.submission_id
+     WHERE iv.candidate_id_uuid = $1 OR cs.candidate_id = $1`,
     [id]
   );
+  return { interviewCount: result.rows[0].interviewCount };
+};
 
-  if (result.rows.length === 0) return false;
+const deleteCandidate = async (id) => {
+  const client = await pool.connect();
+  let candidate;
+  let deletedInterviewCount = 0;
+  try {
+    await client.query('BEGIN');
+    const candidateResult = await client.query(
+      'SELECT id, name, candidate_code, mobile FROM candidates WHERE id = $1 FOR UPDATE',
+      [id]
+    );
+    if (candidateResult.rows.length === 0) {
+      await client.query('ROLLBACK');
+      return null;
+    }
+    candidate = candidateResult.rows[0];
 
-  await pool.query(
-    `INSERT INTO candidate_timeline (candidate_id, hr_user_id, action, note)
-     VALUES ($1, $2, $3, $4)`,
-    [id, validUserId, 'Candidate Deleted', 'Candidate profile soft-deleted']
+    const interviews = await client.query(
+      `DELETE FROM interviews
+       WHERE candidate_id_uuid = $1
+          OR submission_id IN (SELECT id FROM candidate_submissions WHERE candidate_id = $1)`,
+      [id]
+    );
+    deletedInterviewCount = interviews.rowCount;
+    await client.query('DELETE FROM candidates WHERE id = $1', [id]);
+    await client.query('COMMIT');
+  } catch (err) {
+    await client.query('ROLLBACK');
+    throw err;
+  } finally {
+    client.release();
+  }
+
+  const driveFilesDeleted = await googleDriveService.deleteCandidateFiles(
+    candidate.name,
+    candidate.candidate_code || candidate.mobile
   );
-
-  return true;
+  return { deletedInterviewCount, driveFilesDeleted };
 };
 
 const checkDuplicate = async ({ email, mobile, excludeId }) => {
@@ -887,7 +904,8 @@ module.exports = {
   updateCandidate,
   setCandidateStatus,
   patchCandidateStatus,
-  softDeleteCandidate,
+  getCandidateDeletionImpact,
+  deleteCandidate,
   checkDuplicate,
   getCandidateHistory,
   getNextCandidateCode,

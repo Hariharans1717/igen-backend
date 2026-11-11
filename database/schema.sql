@@ -368,6 +368,41 @@ CREATE TABLE IF NOT EXISTS greyhr_archive (
     profile_data JSONB NOT NULL
 );
 
+-- 16. Contract Employees
+CREATE TABLE IF NOT EXISTS employees (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    candidate_id UUID UNIQUE REFERENCES candidates(id) ON DELETE SET NULL,
+    employee_name VARCHAR(100) NOT NULL,
+    email VARCHAR(100),
+    mobile VARCHAR(20),
+    company_name VARCHAR(100) NOT NULL,
+    designation VARCHAR(100),
+    department VARCHAR(100),
+    joining_date DATE,
+    last_working_date DATE,
+    created_by UUID REFERENCES hr_users(id) ON DELETE SET NULL,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+);
+
+INSERT INTO employees (
+    candidate_id, employee_name, email, mobile, company_name, designation,
+    department, joining_date, last_working_date
+)
+SELECT
+    ga.candidate_id,
+    COALESCE(NULLIF(BTRIM(c.name), ''), NULLIF(ga.profile_data->'candidate'->>'name', ''), 'Contract employee'),
+    COALESCE(c.email, ga.profile_data->'candidate'->>'email'),
+    COALESCE(c.mobile, ga.profile_data->'candidate'->>'mobile'),
+    ga.joined_company,
+    COALESCE(c.current_designation, ga.profile_data->'candidate'->>'current_designation'),
+    COALESCE(c.department, ga.profile_data->'candidate'->>'department'),
+    NULLIF(ga.profile_data->>'joining_date', '')::date,
+    COALESCE(c.lwd, NULLIF(ga.profile_data->'candidate'->>'lwd', '')::date)
+FROM greyhr_archive ga
+LEFT JOIN candidates c ON c.id = ga.candidate_id
+ON CONFLICT (candidate_id) DO NOTHING;
+
 -- 16. Refresh Tokens
 CREATE TABLE IF NOT EXISTS auth_refresh_tokens (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
@@ -408,6 +443,8 @@ CREATE INDEX IF NOT EXISTS idx_notes_category ON candidate_notes (category);
 CREATE INDEX IF NOT EXISTS idx_notes_priority ON candidate_notes (priority);
 CREATE INDEX IF NOT EXISTS idx_edit_history_note ON note_edit_history (note_id);
 CREATE INDEX IF NOT EXISTS idx_refresh_tokens_user_id ON auth_refresh_tokens (user_id);
+CREATE INDEX IF NOT EXISTS idx_employees_name ON employees (employee_name);
+CREATE INDEX IF NOT EXISTS idx_employees_company ON employees (company_name);
 CREATE INDEX IF NOT EXISTS idx_pipeline_candidate ON candidate_company_pipeline (candidate_id);
 CREATE INDEX IF NOT EXISTS idx_status_history_candidate ON candidate_status_history (candidate_id);
 

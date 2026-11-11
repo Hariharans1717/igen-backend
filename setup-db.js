@@ -61,6 +61,61 @@ async function run() {
     `);
     console.log('✅ Candidate registration compatibility applied!\n');
 
+    const duplicateCompanyCodes = await pool.query(`
+      SELECT company_id, company_code
+      FROM (
+        SELECT company_id, company_code, created_at,
+          ROW_NUMBER() OVER (
+            PARTITION BY LOWER(TRIM(company_code))
+            ORDER BY created_at ASC, company_id ASC
+          ) AS duplicate_rank
+        FROM companies
+        WHERE company_code IS NOT NULL AND TRIM(company_code) <> ''
+      ) ranked
+      WHERE duplicate_rank > 1
+      ORDER BY LOWER(TRIM(company_code)), created_at, company_id
+    `);
+
+    for (const duplicate of duplicateCompanyCodes.rows) {
+      const currentCode = duplicate.company_code.trim().toUpperCase();
+      const match = currentCode.match(/^(.+?)(\d+)$/);
+      const prefix = match ? match[1] : currentCode;
+      let suffix = match ? Number(match[2]) + 1 : 1001;
+      let uniqueCode;
+
+      while (true) {
+        uniqueCode = `${prefix}${suffix}`;
+        const conflict = await pool.query(
+          `SELECT 1 FROM companies WHERE LOWER(TRIM(company_code)) = LOWER($1) LIMIT 1`,
+          [uniqueCode]
+        );
+        if (conflict.rows.length === 0) break;
+        suffix += 1;
+      }
+
+      await pool.query(
+        `UPDATE companies SET company_code = $1 WHERE company_id = $2`,
+        [uniqueCode, duplicate.company_id]
+      );
+      console.log(`✅ Reassigned duplicate company code ${currentCode} to ${uniqueCode}`);
+    }
+
+    await pool.query(`
+      CREATE UNIQUE INDEX IF NOT EXISTS idx_companies_company_code_unique
+      ON companies (LOWER(TRIM(company_code)))
+      WHERE company_code IS NOT NULL AND TRIM(company_code) <> ''
+    `);
+    console.log('✅ Company codes are now unique (case-insensitive)\n');
+
+    const maxCandidateCodeResult = await pool.query(`
+      SELECT MAX(CAST(SUBSTRING(candidate_code FROM 3) AS BIGINT)) AS max_number
+      FROM candidates
+      WHERE candidate_code ~ '^IG[0-9]+$'
+    `);
+    const nextCandidateNumber = Number(maxCandidateCodeResult.rows[0].max_number || 0) + 1;
+    await pool.query("SELECT setval('candidate_id_seq', $1, false)", [nextCandidateNumber]);
+    console.log(`✅ Candidate ID sequence initialized at IG${String(nextCandidateNumber).padStart(4, '0')}\n`);
+
     // Step 3: Verify tables were created
     const tables = await pool.query(`
       SELECT table_name FROM information_schema.tables 

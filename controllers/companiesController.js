@@ -19,6 +19,15 @@ const getCompanyById = async (req, res, next) => {
   }
 };
 
+const getNextCompanyCode = async (req, res, next) => {
+  try {
+    const companyCode = await companyService.getNextCompanyCode(req.query.companyName);
+    return res.json({ companyCode });
+  } catch (err) {
+    next(err);
+  }
+};
+
 const createCompany = async (req, res, next) => {
   try {
     const company = await companyService.createCompany(req.body);
@@ -103,6 +112,7 @@ const checkCompanyInterviews = async (req, res, next) => {
 module.exports = {
   listCompanies,
   getCompanyById,
+  getNextCompanyCode,
   createCompany,
   addBranch,
   updateCompany,
