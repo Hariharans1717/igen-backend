@@ -10,6 +10,9 @@ const createEmployee = async (req, res) => {
     const employee = await employeesService.createEmployee(req.validated.body, req.user.id);
     return res.status(201).json(employee);
   } catch (error) {
+    if (error.message === 'An employee with this mobile number already exists.') {
+      return res.status(409).json({ error: error.message });
+    }
     if (error.code === '23505') return res.status(409).json({ error: 'This candidate is already registered as an employee.' });
     throw error;
   }
@@ -21,6 +24,9 @@ const updateEmployee = async (req, res) => {
     if (!employee) return res.status(404).json({ error: 'Employee not found.' });
     return res.json(employee);
   } catch (error) {
+    if (error.message === 'An employee with this mobile number already exists.') {
+      return res.status(409).json({ error: error.message });
+    }
     if (error.code === '23505') return res.status(409).json({ error: 'This candidate is already registered as an employee.' });
     throw error;
   }

@@ -396,21 +396,47 @@ const createCandidate = async (data, userId) => {
   console.log('🗂️ Normalized employmentStatus:', employmentStatus);
   console.log('🗂️ Mapped status:', status);
 
-  // Check if an inactive candidate already exists with the same email or mobile
-  const existing = await pool.query(
-    "SELECT id, status, candidate_code FROM candidates WHERE email = $1 OR mobile = $2",
-    [data.email, data.mobile]
-  );
-  
-  console.log('🔍 Existing candidate check - Found:', existing.rows.length > 0);
-  if (existing.rows.length > 0) {
-    console.log('📋 Existing candidate:', JSON.stringify(existing.rows[0], null, 2));
-    const existingCandidate = existing.rows[0];
-    if (existingCandidate.status !== 'inactive') {
-      console.error('❌ Duplicate detected - active candidate with same email/mobile');
-      throw new Error('A candidate with this email or mobile already exists and is active.');
+  // Check if candidate with the same mobile number already exists and is active
+  if (data.mobile && data.mobile.trim()) {
+    const cleanMobile = data.mobile.trim();
+    const digits = cleanMobile.replace(/\D/g, '');
+    let mobileExisting;
+    if (digits.length >= 10) {
+      const last10 = digits.slice(-10);
+      mobileExisting = await pool.query(
+        "SELECT id, status, candidate_code FROM candidates WHERE (mobile = $1 OR (LENGTH(REGEXP_REPLACE(mobile, '[^0-9]', '', 'g')) >= 10 AND RIGHT(REGEXP_REPLACE(mobile, '[^0-9]', '', 'g'), 10) = $2)) AND status != 'inactive'",
+        [cleanMobile, last10]
+      );
+    } else {
+      mobileExisting = await pool.query(
+        "SELECT id, status, candidate_code FROM candidates WHERE mobile = $1 AND status != 'inactive'",
+        [cleanMobile]
+      );
+    }
+    if (mobileExisting.rows.length > 0) {
+      console.error('❌ Duplicate detected - active candidate with same mobile number');
+      throw new Error('A candidate with this mobile number already exists.');
     }
   }
+
+  // Check if candidate with the same email already exists and is active
+  if (data.email && data.email.trim()) {
+    const cleanEmail = data.email.trim().toLowerCase();
+    const emailExisting = await pool.query(
+      "SELECT id, status, candidate_code FROM candidates WHERE LOWER(email) = $1 AND status != 'inactive'",
+      [cleanEmail]
+    );
+    if (emailExisting.rows.length > 0) {
+      console.error('❌ Duplicate detected - active candidate with same email');
+      throw new Error('A candidate with this email already exists.');
+    }
+  }
+
+  // Check if an inactive candidate already exists to restore code if re-registering
+  const existing = await pool.query(
+    "SELECT id, status, candidate_code FROM candidates WHERE (email = $1 OR mobile = $2) AND status = 'inactive'",
+    [data.email, data.mobile]
+  );
 
   // Keep the existing ID on restore; new registrations always get a server-assigned sequence ID.
   let candidateCode = existing.rows[0]?.candidate_code;
@@ -592,6 +618,40 @@ const updateCandidate = async (id, data, userId) => {
   if (updatePayload.currentCTC === '') updatePayload.currentCTC = null;
   if (updatePayload.experience === '') updatePayload.experience = null;
   if (updatePayload.expectedHikePercent === '') updatePayload.expectedHikePercent = null;
+
+  // Prevent duplicate mobile number during updates (while allowing current candidate to retain own mobile)
+  if (updatePayload.mobile && updatePayload.mobile.trim()) {
+    const cleanMobile = updatePayload.mobile.trim();
+    const digits = cleanMobile.replace(/\D/g, '');
+    let mobileExisting;
+    if (digits.length >= 10) {
+      const last10 = digits.slice(-10);
+      mobileExisting = await pool.query(
+        "SELECT id FROM candidates WHERE (mobile = $1 OR (LENGTH(REGEXP_REPLACE(mobile, '[^0-9]', '', 'g')) >= 10 AND RIGHT(REGEXP_REPLACE(mobile, '[^0-9]', '', 'g'), 10) = $2)) AND id != $3 AND status != 'inactive'",
+        [cleanMobile, last10, id]
+      );
+    } else {
+      mobileExisting = await pool.query(
+        "SELECT id FROM candidates WHERE mobile = $1 AND id != $2 AND status != 'inactive'",
+        [cleanMobile, id]
+      );
+    }
+    if (mobileExisting.rows.length > 0) {
+      throw new Error('A candidate with this mobile number already exists.');
+    }
+  }
+
+  // Prevent duplicate email during updates (while allowing current candidate to retain own email)
+  if (updatePayload.email && updatePayload.email.trim()) {
+    const cleanEmail = updatePayload.email.trim().toLowerCase();
+    const emailExisting = await pool.query(
+      "SELECT id FROM candidates WHERE LOWER(email) = $1 AND id != $2 AND status != 'inactive'",
+      [cleanEmail, id]
+    );
+    if (emailExisting.rows.length > 0) {
+      throw new Error('A candidate with this email already exists.');
+    }
+  }
 
   if (updatePayload.name) updatePayload.name = toProperCase(updatePayload.name);
   if (updatePayload.currentCompany) updatePayload.currentCompany = toProperCase(updatePayload.currentCompany);
@@ -775,11 +835,22 @@ const checkDuplicate = async ({ email, mobile, excludeId }) => {
   }
 
   if (cleanMobile) {
-    const result = await pool.query(
-      "SELECT * FROM candidates WHERE mobile = $1 AND status != 'inactive'" +
-      (validExcludeId ? ' AND id != $2' : ''),
-      validExcludeId ? [cleanMobile, validExcludeId] : [cleanMobile]
-    );
+    const digits = cleanMobile.replace(/\D/g, '');
+    let result;
+    if (digits.length >= 10) {
+      const last10 = digits.slice(-10);
+      result = await pool.query(
+        "SELECT * FROM candidates WHERE (mobile = $1 OR (LENGTH(REGEXP_REPLACE(mobile, '[^0-9]', '', 'g')) >= 10 AND RIGHT(REGEXP_REPLACE(mobile, '[^0-9]', '', 'g'), 10) = $2)) AND status != 'inactive'" +
+        (validExcludeId ? ' AND id != $3' : ''),
+        validExcludeId ? [cleanMobile, last10, validExcludeId] : [cleanMobile, last10]
+      );
+    } else {
+      result = await pool.query(
+        "SELECT * FROM candidates WHERE mobile = $1 AND status != 'inactive'" +
+        (validExcludeId ? ' AND id != $2' : ''),
+        validExcludeId ? [cleanMobile, validExcludeId] : [cleanMobile]
+      );
+    }
     mobileExists = result.rows.length > 0;
     if (mobileExists && !candidate) candidate = mapCandidateRow(result.rows[0]);
   }

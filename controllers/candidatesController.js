@@ -38,9 +38,17 @@ const createCandidate = async (req, res) => {
 };
 
 const updateCandidate = async (req, res) => {
-  const candidate = await candidateService.updateCandidate(req.params.id, req.validated.body, req.user.id);
-  if (!candidate) return res.status(404).json({ error: 'Candidate not found.' });
-  return res.json(candidate);
+  try {
+    const candidate = await candidateService.updateCandidate(req.params.id, req.validated.body, req.user.id);
+    if (!candidate) return res.status(404).json({ error: 'Candidate not found.' });
+    return res.json(candidate);
+  } catch (error) {
+    if (error.message && error.message.includes('already exists')) {
+      return res.status(400).json({ error: error.message });
+    }
+    console.error('❌ [updateCandidate] Error:', error.message);
+    return res.status(500).json({ error: error.message || 'Internal Server Error' });
+  }
 };
 
 const getCandidateDeletionImpact = async (req, res) => {

@@ -15,6 +15,37 @@ const mapEmployee = (row) => ({
   updatedAt: row.updated_at,
 });
 
+const findEmployeeByMobile = async (mobile, excludeId) => {
+  const cleanMobile = typeof mobile === 'string' ? mobile.trim() : '';
+  const digits = cleanMobile.replace(/\D/g, '');
+  if (!cleanMobile) return null;
+
+  const params = [cleanMobile];
+  let exclusion = '';
+  if (excludeId) {
+    params.push(excludeId);
+    exclusion = ` AND id != $${params.length}`;
+  }
+
+  const result = digits.length >= 10
+    ? await pool.query(
+      `SELECT id FROM employees
+       WHERE (
+         mobile = $1 OR
+         (LENGTH(REGEXP_REPLACE(mobile, '[^0-9]', '', 'g')) >= 10
+          AND RIGHT(REGEXP_REPLACE(mobile, '[^0-9]', '', 'g'), 10) = $2)
+       )${exclusion}
+       LIMIT 1`,
+      excludeId ? [cleanMobile, digits.slice(-10), excludeId] : [cleanMobile, digits.slice(-10)]
+    )
+    : await pool.query(
+      `SELECT id FROM employees WHERE mobile = $1${exclusion} LIMIT 1`,
+      params
+    );
+
+  return result.rows[0] || null;
+};
+
 const listEmployees = async ({ page, pageSize, search }) => {
   const offset = (page - 1) * pageSize;
   const params = [];
@@ -47,6 +78,10 @@ const listEmployees = async ({ page, pageSize, search }) => {
 };
 
 const createEmployee = async (employee, userId) => {
+  if (await findEmployeeByMobile(employee.mobile)) {
+    throw new Error('An employee with this mobile number already exists.');
+  }
+
   const result = await pool.query(
     `INSERT INTO employees (
        candidate_id, employee_name, email, mobile, company_name, designation,
@@ -70,6 +105,10 @@ const createEmployee = async (employee, userId) => {
 };
 
 const updateEmployee = async (id, employee) => {
+  if (await findEmployeeByMobile(employee.mobile, id)) {
+    throw new Error('An employee with this mobile number already exists.');
+  }
+
   const result = await pool.query(
     `UPDATE employees SET
        candidate_id = $1, employee_name = $2, email = $3, mobile = $4,
